@@ -1,0 +1,19 @@
+apiVersion: hexactf.io/v1
+kind: ChallengeTemplate
+metadata:
+  name: flask
+spec:
+  type: "flask"
+  basePort: 30001
+  resources:
+    pod:
+      containers:
+        - name: flask-app
+          image: flask-sample:latest
+          ports:
+            - containerPort: 5000
+    service:
+      type: ClusterIP
+      ports:
+        - port: 80
+          targetPort: 5000
