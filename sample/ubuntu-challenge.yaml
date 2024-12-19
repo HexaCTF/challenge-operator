@@ -8,4 +8,4 @@ metadata:
     hexactf.io/problemId: "1"
 spec:
   namespace: default
-  cTemplate: ubuntu
+  cTemplate: "ubuntu"
