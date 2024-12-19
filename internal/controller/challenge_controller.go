@@ -114,7 +114,7 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	if timeoutReached {
-		logger.Info("Challenge timeout reached (30 minutes), initiating cleanup",
+		logger.Info("Challenge timeout reached (some minutes), initiating cleanup",
 			"challenge", challenge.Name,
 			"elapsed", time.Since(challenge.Status.StartedAt.Time))
 
