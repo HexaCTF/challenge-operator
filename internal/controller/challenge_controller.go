@@ -133,38 +133,52 @@ func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *app
 	logger := log.FromContext(ctx)
 	logger.Info("Processing deletion", "challenge", challenge.Name)
 
-	// Prepare labels for resource selection
-	labels := map[string]string{
-		"hexactf.io/challenge": userLabel,
-		"hexactf.io/user":      challenge.Labels["hexactf.io/user"],
-		"hexactf.io/problemId": challenge.Labels["hexactf.io/problemId"],
-	}
-
-	// Delete Pods with matching labels
-	if err := r.DeleteAllOf(ctx, &v1.Pod{},
-		client.InNamespace(challenge.Spec.Namespace),
-		client.MatchingLabels(labels)); err != nil {
-		logger.Error(err, "Failed to delete Pods", "labels", labels)
-		return ctrl.Result{}, fmt.Errorf("failed to delete pods: %w", err)
-	}
-
-	// Delete Services with matching labels
-	if err := r.DeleteAllOf(ctx, &v1.Service{},
-		client.InNamespace(challenge.Spec.Namespace),
-		client.MatchingLabels(labels)); err != nil {
-		logger.Error(err, "Failed to delete Services", "labels", labels)
-		return ctrl.Result{}, fmt.Errorf("failed to delete services: %w", err)
-	}
-
-	// Remove finalizer
+	// Remove finalizer only
 	challenge.Finalizers = removeString(challenge.Finalizers, finalizerName)
 	if err := r.Update(ctx, challenge); err != nil {
 		logger.Error(err, "Failed to remove finalizer")
 		return ctrl.Result{}, err
 	}
 
+	logger.Info("Successfully removed finalizer")
 	return ctrl.Result{}, nil
 }
+
+//	logger := log.FromContext(ctx)
+//	logger.Info("Processing deletion", "challenge", challenge.Name)
+//
+//	// Prepare labels for resource selection
+//	labels := map[string]string{
+//		"hexactf.io/challenge": userLabel,
+//		"hexactf.io/user":      challenge.Labels["hexactf.io/user"],
+//		"hexactf.io/problemId": challenge.Labels["hexactf.io/problemId"],
+//	}
+//
+//	// Delete Pods with matching labels
+//	if err := r.DeleteAllOf(ctx, &v1.Pod{},
+//		client.InNamespace(challenge.Spec.Namespace),
+//		client.MatchingLabels(labels)); err != nil {
+//		logger.Error(err, "Failed to delete Pods", "labels", labels)
+//		return ctrl.Result{}, fmt.Errorf("failed to delete pods: %w", err)
+//	}
+//
+//	// Delete Services with matching labels
+//	if err := r.DeleteAllOf(ctx, &v1.Service{},
+//		client.InNamespace(challenge.Spec.Namespace),
+//		client.MatchingLabels(labels)); err != nil {
+//		logger.Error(err, "Failed to delete Services", "labels", labels)
+//		return ctrl.Result{}, fmt.Errorf("failed to delete services: %w", err)
+//	}
+//
+//	// Remove finalizer
+//	challenge.Finalizers = removeString(challenge.Finalizers, finalizerName)
+//	if err := r.Update(ctx, challenge); err != nil {
+//		logger.Error(err, "Failed to remove finalizer")
+//		return ctrl.Result{}, err
+//	}
+//
+//	return ctrl.Result{}, nil
+//}
 
 func (r *ChallengeReconciler) loadChallengeTemplate(ctx context.Context, challenge *appsv1alpha1.Challenge) (*appsv1alpha1.ChallengeTemplate, error) {
 	var template appsv1alpha1.ChallengeTemplate

@@ -1,0 +1,11 @@
+apiVersion: apps.hexactf.io/v1alpha1
+kind: Challenge
+metadata:
+  name: challenge-example2
+  namespace: default
+  labels:
+    hexactf.io/user: "test2"
+    hexactf.io/problemId: "2"
+spec:
+  namespace: default
+  cTemplate: "ubuntu"
