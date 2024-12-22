@@ -42,6 +42,7 @@ const (
 // ChallengeReconciler reconciles a Challenge object
 type ChallengeReconciler struct {
 	client.Client
+	kafka  *KafkaProducer
 	Scheme *runtime.Scheme
 }
 
@@ -88,7 +89,7 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Load associated ChallengeTemplate
 	template, err := r.loadChallengeTemplate(ctx, &challenge)
 	if err != nil {
-		return ctrl.Result{}, err
+		return r.handleError(ctx, &challenge, err)
 	}
 
 	// Initialize challenge if needed
@@ -97,20 +98,15 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	// Create or verify Pod
-	if err := r.reconcilePod(ctx, &challenge, template, userLabel); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	// Create or verify Service
-	if err := r.reconcileService(ctx, &challenge, template, userLabel); err != nil {
-		return ctrl.Result{}, err
+	if err := r.reconcileResources(ctx, &challenge, template, userLabel); err != nil {
+		return r.handleError(ctx, &challenge, err)
 	}
 
 	// Check for challenge timeout
 	timeoutReached, err := r.checkTimeout(ctx, &challenge)
 	if err != nil {
 		logger.Error(err, "Failed to check timeout status")
-		return ctrl.Result{}, err
+		return r.handleError(ctx, &challenge, err)
 	}
 
 	if timeoutReached {
@@ -118,14 +114,33 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			"challenge", challenge.Name,
 			"elapsed", time.Since(challenge.Status.StartedAt.Time))
 
+		if err := r.kafka.SendStatusChange(
+			challenge.Labels["hexactf.io/user"],
+			challenge.Labels["hexactf.io/problemId"],
+			"TimedOut",
+		); err != nil {
+			logger.Error(err, "Kafka TimeOut")
+		}
+
 		if err := r.Delete(ctx, &challenge); err != nil {
 			logger.Error(err, "Failed to delete timed-out challenge")
-			return ctrl.Result{}, err
+			return r.handleError(ctx, &challenge, err)
 		}
 		return ctrl.Result{}, nil
 	}
 
 	return ctrl.Result{RequeueAfter: requeueInterval}, nil
+}
+
+func (r *ChallengeReconciler) handleError(ctx context.Context, challenge *appsv1alpha1.Challenge, err error) (ctrl.Result, error) {
+	if err := r.kafka.SendStatusChange(
+		challenge.Labels["hexactf.io/user"],
+		challenge.Labels["hexactf.io/problemId"],
+		"Error",
+	); err != nil {
+		log.FromContext(ctx).Error(err, "Failed to send status change to Kafka")
+	}
+	return ctrl.Result{}, err
 }
 
 // handleDeletion 관련 리소스 삭제 후 Finalizer 제거
@@ -137,48 +152,21 @@ func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *app
 	challenge.Finalizers = removeString(challenge.Finalizers, finalizerName)
 	if err := r.Update(ctx, challenge); err != nil {
 		logger.Error(err, "Failed to remove finalizer")
-		return ctrl.Result{}, err
+		return r.handleError(ctx, challenge, err)
+	}
+
+	// Kafka
+	if err := r.kafka.SendStatusChange(
+		challenge.Labels["hexactf.io/user"],
+		challenge.Labels["hexactf.io/problemId"],
+		"Deleted",
+	); err != nil {
+		logger.Error(err, "Failed to send status change to Kafka")
 	}
 
 	logger.Info("Successfully removed finalizer")
 	return ctrl.Result{}, nil
 }
-
-//	logger := log.FromContext(ctx)
-//	logger.Info("Processing deletion", "challenge", challenge.Name)
-//
-//	// Prepare labels for resource selection
-//	labels := map[string]string{
-//		"hexactf.io/challenge": userLabel,
-//		"hexactf.io/user":      challenge.Labels["hexactf.io/user"],
-//		"hexactf.io/problemId": challenge.Labels["hexactf.io/problemId"],
-//	}
-//
-//	// Delete Pods with matching labels
-//	if err := r.DeleteAllOf(ctx, &v1.Pod{},
-//		client.InNamespace(challenge.Spec.Namespace),
-//		client.MatchingLabels(labels)); err != nil {
-//		logger.Error(err, "Failed to delete Pods", "labels", labels)
-//		return ctrl.Result{}, fmt.Errorf("failed to delete pods: %w", err)
-//	}
-//
-//	// Delete Services with matching labels
-//	if err := r.DeleteAllOf(ctx, &v1.Service{},
-//		client.InNamespace(challenge.Spec.Namespace),
-//		client.MatchingLabels(labels)); err != nil {
-//		logger.Error(err, "Failed to delete Services", "labels", labels)
-//		return ctrl.Result{}, fmt.Errorf("failed to delete services: %w", err)
-//	}
-//
-//	// Remove finalizer
-//	challenge.Finalizers = removeString(challenge.Finalizers, finalizerName)
-//	if err := r.Update(ctx, challenge); err != nil {
-//		logger.Error(err, "Failed to remove finalizer")
-//		return ctrl.Result{}, err
-//	}
-//
-//	return ctrl.Result{}, nil
-//}
 
 func (r *ChallengeReconciler) loadChallengeTemplate(ctx context.Context, challenge *appsv1alpha1.Challenge) (*appsv1alpha1.ChallengeTemplate, error) {
 	var template appsv1alpha1.ChallengeTemplate
@@ -197,6 +185,80 @@ func (r *ChallengeReconciler) initializeChallenge(ctx context.Context, challenge
 		challenge.Status.StartedAt = &now
 		return r.Status().Update(ctx, challenge)
 	}
+	return nil
+}
+
+// reconcileResources Pod 서비스를 생성해준다.
+// 생성이 모두 성공되면 Kafka로 생성 상태를 전송한다.
+func (r *ChallengeReconciler) reconcileResources(ctx context.Context, challenge *appsv1alpha1.Challenge, template *appsv1alpha1.ChallengeTemplate, userLabel string) error {
+	logger := log.FromContext(ctx)
+
+	// Check if resources existed before reconciliation
+	podName := fmt.Sprintf("pod-%s", userLabel)
+	serviceName := fmt.Sprintf("svc-%s", userLabel)
+
+	var podExisted, serviceExisted bool
+
+	// Check Pod existence
+	var existingPod v1.Pod
+	if err := r.Get(ctx, client.ObjectKey{
+		Namespace: challenge.Spec.Namespace,
+		Name:      podName,
+	}, &existingPod); err == nil {
+		podExisted = true
+	}
+
+	// Check Service existence
+	var existingService v1.Service
+	if err := r.Get(ctx, client.ObjectKey{
+		Namespace: challenge.Spec.Namespace,
+		Name:      serviceName,
+	}, &existingService); err == nil {
+		serviceExisted = true
+	}
+
+	// Reconcile Pod
+	if err := r.reconcilePod(ctx, challenge, template, userLabel); err != nil {
+		return err
+	}
+
+	// Reconcile Service
+	if err := r.reconcileService(ctx, challenge, template, userLabel); err != nil {
+		return err
+	}
+
+	// If neither resource existed before, verify both were created successfully
+	if !podExisted && !serviceExisted {
+		// Verify both resources exist now
+		var pod v1.Pod
+		var svc v1.Service
+
+		podErr := r.Get(ctx, client.ObjectKey{
+			Namespace: challenge.Spec.Namespace,
+			Name:      podName,
+		}, &pod)
+
+		svcErr := r.Get(ctx, client.ObjectKey{
+			Namespace: challenge.Spec.Namespace,
+			Name:      serviceName,
+		}, &svc)
+
+		// If both resources were successfully created
+		if podErr == nil && svcErr == nil {
+			if err := r.kafka.SendStatusChange(
+				challenge.Labels["hexactf.io/user"],
+				challenge.Labels["hexactf.io/problemId"],
+				"Created",
+			); err != nil {
+				logger.Error(err, "Failed to send resource creation status to Kafka")
+			} else {
+				logger.Info("Successfully sent creation status to Kafka",
+					"user", challenge.Labels["hexactf.io/user"],
+					"problemId", challenge.Labels["hexactf.io/problemId"])
+			}
+		}
+	}
+
 	return nil
 }
 
