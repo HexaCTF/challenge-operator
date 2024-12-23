@@ -19,6 +19,7 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -50,6 +51,58 @@ func init() {
 
 	utilruntime.Must(appsv1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
+}
+
+type Config struct {
+	MetricsAddr          string
+	ProbeAddr            string
+	EnableLeaderElection bool
+	SecureMetrics        bool
+	EnableHTTP2          bool
+	CertDir              string
+	LogLevel             string
+	Development          bool
+	WebhookPort          int
+}
+
+func loadConfigFromEnv() Config {
+	// Default configuration suitable for Docker Desktop
+	config := Config{
+		MetricsAddr:          getEnv("METRICS_ADDR", ":8080"),
+		ProbeAddr:            getEnv("PROBE_ADDR", ":8081"),
+		EnableLeaderElection: getEnvBool("ENABLE_LEADER_ELECTION", false),
+		SecureMetrics:        getEnvBool("SECURE_METRICS", false), // Disabled for local development
+		EnableHTTP2:          getEnvBool("ENABLE_HTTP2", true),    // Enabled for local development
+		CertDir:              getEnv("CERT_DIR", "/tmp/k8s-webhook-server/serving-certs"),
+		LogLevel:             getEnv("LOG_LEVEL", "debug"),    // More verbose logging for development
+		Development:          getEnvBool("DEVELOPMENT", true), // Enable development mode
+		WebhookPort:          getEnvInt("WEBHOOK_PORT", 9443),
+	}
+	return config
+}
+
+func getEnv(key, defaultValue string) string {
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return defaultValue
+}
+
+func getEnvBool(key string, defaultValue bool) bool {
+	if value, exists := os.LookupEnv(key); exists {
+		return value == "true"
+	}
+	return defaultValue
+}
+
+func getEnvInt(key string, defaultValue int) int {
+	if value, exists := os.LookupEnv(key); exists {
+		var parsed int
+		if _, err := fmt.Sscanf(value, "%d", &parsed); err == nil {
+			return parsed
+		}
+	}
+	return defaultValue
 }
 
 func main() {
