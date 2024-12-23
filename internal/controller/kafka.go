@@ -32,7 +32,22 @@ func NewKafkaProducer(brokers []string) (*KafkaProducer, error) {
 	config.Producer.Retry.Max = 5
 	config.Producer.Return.Successes = true
 
-	producer, err := sarama.NewSyncProducer(brokers, config)
+	var producer sarama.SyncProducer
+	var err error
+	maxRetries := 10
+	retryInterval := time.Second * 10
+
+	for i := 0; i < maxRetries; i++ {
+		producer, err = sarama.NewSyncProducer(brokers, config)
+		if err == nil {
+			break
+		}
+		//log.Info("Failed to connect to Kafka, retrying...",
+		//	"attempt", i+1,
+		//	"maxRetries", maxRetries,
+		//	"error", err)
+		time.Sleep(retryInterval)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Kafka producer: %w", err)
 	}
@@ -44,6 +59,13 @@ func NewKafkaProducer(brokers []string) (*KafkaProducer, error) {
 
 // SendStatusChange 상태 메세지를 보낼때 사용된다.
 func (k *KafkaProducer) SendStatusChange(userId, problemId, newStatus string) error {
+
+	if k == nil {
+		return fmt.Errorf("KafkaProducer instance is nil")
+	}
+	if k.producer == nil {
+		return fmt.Errorf("internal Kafka producer is nil")
+	}
 	msg := StatusMessage{
 		UserID:    userId,
 		ProblemID: problemId,

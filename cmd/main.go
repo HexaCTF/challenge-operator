@@ -19,8 +19,8 @@ package main
 import (
 	"crypto/tls"
 	"flag"
-	"fmt"
 	"os"
+	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -51,58 +51,6 @@ func init() {
 
 	utilruntime.Must(appsv1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
-}
-
-type Config struct {
-	MetricsAddr          string
-	ProbeAddr            string
-	EnableLeaderElection bool
-	SecureMetrics        bool
-	EnableHTTP2          bool
-	CertDir              string
-	LogLevel             string
-	Development          bool
-	WebhookPort          int
-}
-
-func loadConfigFromEnv() Config {
-	// Default configuration suitable for Docker Desktop
-	config := Config{
-		MetricsAddr:          getEnv("METRICS_ADDR", ":8080"),
-		ProbeAddr:            getEnv("PROBE_ADDR", ":8081"),
-		EnableLeaderElection: getEnvBool("ENABLE_LEADER_ELECTION", false),
-		SecureMetrics:        getEnvBool("SECURE_METRICS", false), // Disabled for local development
-		EnableHTTP2:          getEnvBool("ENABLE_HTTP2", true),    // Enabled for local development
-		CertDir:              getEnv("CERT_DIR", "/tmp/k8s-webhook-server/serving-certs"),
-		LogLevel:             getEnv("LOG_LEVEL", "debug"),    // More verbose logging for development
-		Development:          getEnvBool("DEVELOPMENT", true), // Enable development mode
-		WebhookPort:          getEnvInt("WEBHOOK_PORT", 9443),
-	}
-	return config
-}
-
-func getEnv(key, defaultValue string) string {
-	if value, exists := os.LookupEnv(key); exists {
-		return value
-	}
-	return defaultValue
-}
-
-func getEnvBool(key string, defaultValue bool) bool {
-	if value, exists := os.LookupEnv(key); exists {
-		return value == "true"
-	}
-	return defaultValue
-}
-
-func getEnvInt(key string, defaultValue int) int {
-	if value, exists := os.LookupEnv(key); exists {
-		var parsed int
-		if _, err := fmt.Sscanf(value, "%d", &parsed); err == nil {
-			return parsed
-		}
-	}
-	return defaultValue
 }
 
 func main() {
@@ -195,9 +143,24 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Kafka
+	kafkaBrokers := strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
+	if len(kafkaBrokers) == 0 {
+		kafkaBrokers = []string{"localhost:9093"} // 9093 포트 사용
+	}
+
+	kafkaProducer, err := controller.NewKafkaProducer(kafkaBrokers)
+	if err != nil {
+		setupLog.Error(err, "unable to create kafka producer")
+		os.Exit(1)
+	}
+
+	defer kafkaProducer.Close()
+
 	if err = (&controller.ChallengeReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
+		Kafka:  kafkaProducer,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Challenge")
 		os.Exit(1)

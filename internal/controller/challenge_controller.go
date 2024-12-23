@@ -35,14 +35,14 @@ import (
 const (
 	finalizerName     = "finalizer.hexactf.io/challenge"
 	challengeDuration = 2 * time.Minute
-	requeueInterval   = 1 * time.Minute
+	requeueInterval   = 30 * time.Second
 	warningThreshold  = 25 * time.Minute // Time to start warning about impending timeout
 )
 
 // ChallengeReconciler reconciles a Challenge object
 type ChallengeReconciler struct {
 	client.Client
-	kafka  *KafkaProducer
+	Kafka  *KafkaProducer
 	Scheme *runtime.Scheme
 }
 
@@ -76,11 +76,6 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		challenge.Labels["hexactf.io/user"],
 		challenge.Labels["hexactf.io/problemId"])
 
-	// Handle deletion
-	if !challenge.DeletionTimestamp.IsZero() {
-		return r.handleDeletion(ctx, &challenge, userLabel)
-	}
-
 	// Add finalizer if not present
 	if !containsString(challenge.Finalizers, finalizerName) {
 		return r.addFinalizer(ctx, &challenge)
@@ -102,6 +97,11 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.handleError(ctx, &challenge, err)
 	}
 
+	// Handle deletion
+	if time.Since(challenge.Status.StartedAt.Time) > challengeDuration {
+		return r.handleDeletion(ctx, &challenge, userLabel)
+	}
+
 	// Check for challenge timeout
 	timeoutReached, err := r.checkTimeout(ctx, &challenge)
 	if err != nil {
@@ -114,7 +114,7 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			"challenge", challenge.Name,
 			"elapsed", time.Since(challenge.Status.StartedAt.Time))
 
-		if err := r.kafka.SendStatusChange(
+		if err := r.Kafka.SendStatusChange(
 			challenge.Labels["hexactf.io/user"],
 			challenge.Labels["hexactf.io/problemId"],
 			"TimedOut",
@@ -133,7 +133,7 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 }
 
 func (r *ChallengeReconciler) handleError(ctx context.Context, challenge *appsv1alpha1.Challenge, err error) (ctrl.Result, error) {
-	if err := r.kafka.SendStatusChange(
+	if err := r.Kafka.SendStatusChange(
 		challenge.Labels["hexactf.io/user"],
 		challenge.Labels["hexactf.io/problemId"],
 		"Error",
@@ -148,23 +148,33 @@ func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *app
 	logger := log.FromContext(ctx)
 	logger.Info("Processing deletion", "challenge", challenge.Name)
 
-	// Remove finalizer only
-	challenge.Finalizers = removeString(challenge.Finalizers, finalizerName)
-	if err := r.Update(ctx, challenge); err != nil {
-		logger.Error(err, "Failed to remove finalizer")
-		return r.handleError(ctx, challenge, err)
+	// 1. 먼저 삭제 요청
+	if challenge.DeletionTimestamp.IsZero() {
+		if err := r.Delete(ctx, challenge); err != nil {
+			logger.Error(err, "Failed to request deletion")
+			return ctrl.Result{RequeueAfter: time.Second * 5}, err
+		}
+		return ctrl.Result{Requeue: true}, nil // 즉시 재큐
 	}
 
-	// Kafka
-	if err := r.kafka.SendStatusChange(
+	// 2. Kafka에 상태 전송
+	if err := r.Kafka.SendStatusChange(
 		challenge.Labels["hexactf.io/user"],
 		challenge.Labels["hexactf.io/problemId"],
 		"Deleted",
 	); err != nil {
-		logger.Error(err, "Failed to send status change to Kafka")
+		logger.Error(err, "Failed to send status to Kafka")
+		return ctrl.Result{RequeueAfter: time.Second * 5}, err
 	}
 
-	logger.Info("Successfully removed finalizer")
+	// 3. 마지막으로 Finalizer 제거
+	challenge.Finalizers = removeString(challenge.Finalizers, finalizerName)
+	if err := r.Update(ctx, challenge); err != nil {
+		logger.Error(err, "Failed to remove finalizer")
+		return ctrl.Result{RequeueAfter: time.Second * 5}, err
+	}
+
+	logger.Info("Successfully completed deletion process")
 	return ctrl.Result{}, nil
 }
 
@@ -193,30 +203,6 @@ func (r *ChallengeReconciler) initializeChallenge(ctx context.Context, challenge
 func (r *ChallengeReconciler) reconcileResources(ctx context.Context, challenge *appsv1alpha1.Challenge, template *appsv1alpha1.ChallengeTemplate, userLabel string) error {
 	logger := log.FromContext(ctx)
 
-	// Check if resources existed before reconciliation
-	podName := fmt.Sprintf("pod-%s", userLabel)
-	serviceName := fmt.Sprintf("svc-%s", userLabel)
-
-	var podExisted, serviceExisted bool
-
-	// Check Pod existence
-	var existingPod v1.Pod
-	if err := r.Get(ctx, client.ObjectKey{
-		Namespace: challenge.Spec.Namespace,
-		Name:      podName,
-	}, &existingPod); err == nil {
-		podExisted = true
-	}
-
-	// Check Service existence
-	var existingService v1.Service
-	if err := r.Get(ctx, client.ObjectKey{
-		Namespace: challenge.Spec.Namespace,
-		Name:      serviceName,
-	}, &existingService); err == nil {
-		serviceExisted = true
-	}
-
 	// Reconcile Pod
 	if err := r.reconcilePod(ctx, challenge, template, userLabel); err != nil {
 		return err
@@ -227,36 +213,26 @@ func (r *ChallengeReconciler) reconcileResources(ctx context.Context, challenge 
 		return err
 	}
 
-	// If neither resource existed before, verify both were created successfully
-	if !podExisted && !serviceExisted {
-		// Verify both resources exist now
-		var pod v1.Pod
-		var svc v1.Service
-
-		podErr := r.Get(ctx, client.ObjectKey{
-			Namespace: challenge.Spec.Namespace,
-			Name:      podName,
-		}, &pod)
-
-		svcErr := r.Get(ctx, client.ObjectKey{
-			Namespace: challenge.Spec.Namespace,
-			Name:      serviceName,
-		}, &svc)
-
-		// If both resources were successfully created
-		if podErr == nil && svcErr == nil {
-			if err := r.kafka.SendStatusChange(
-				challenge.Labels["hexactf.io/user"],
-				challenge.Labels["hexactf.io/problemId"],
-				"Created",
-			); err != nil {
-				logger.Error(err, "Failed to send resource creation status to Kafka")
-			} else {
-				logger.Info("Successfully sent creation status to Kafka",
-					"user", challenge.Labels["hexactf.io/user"],
-					"problemId", challenge.Labels["hexactf.io/problemId"])
-			}
+	if challenge.Status.StartedAt == nil {
+		// StartedAt이 없으면 초기화
+		now := metav1.Now()
+		challenge.Status.StartedAt = &now
+		if err := r.Status().Update(ctx, challenge); err != nil {
+			logger.Error(err, "Failed to initialize StartedAt")
+			return err
 		}
+	}
+
+	if err := r.Kafka.SendStatusChange(
+		challenge.Labels["hexactf.io/user"],
+		challenge.Labels["hexactf.io/problemId"],
+		"Created",
+	); err != nil {
+		logger.Error(err, "Failed to send resource creation status to Kafka")
+	} else {
+		logger.Info("Successfully sent creation status to Kafka",
+			"user", challenge.Labels["hexactf.io/user"],
+			"problemId", challenge.Labels["hexactf.io/problemId"])
 	}
 
 	return nil
