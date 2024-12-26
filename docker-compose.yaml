@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   zookeeper:
@@ -32,7 +32,7 @@ services:
       - "8080:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: local
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092  # 다시 kafka 서비스 이름으로 변경
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
       KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
 
   challenge-operator:
@@ -46,8 +46,26 @@ services:
     environment:
       DEVELOPMENT: "true"
       METRICS_ADDR: ":8081"
-      KAFKA_BROKERS: "localhost:9093"  # host network mode이므로 localhost 사용
+      KAFKA_BROKERS: "localhost:9093"
       LOG_LEVEL: "debug"
       KUBECONFIG: "/home/nonroot/.kube/config"
     depends_on:
       - kafka
+
+  # flask-app:
+  #   image: hexactf/challenge-api:latest
+  #   ports:
+  #     - "5001:5000"
+  #   environment:
+  #     KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  #     KAFKA_TOPIC: "challenge-status"
+  #     KAFKA_GROUP_ID: "challenge-consumer-group"
+  #   volumes:
+  #     - .:/app
+  #     - type: bind
+  #       source: ${HOME}/.kube/config
+  #       target: /app/.kube/config
+  #       read_only: true
+  #   depends_on:
+  #     - kafka
+  #     - challenge-operator

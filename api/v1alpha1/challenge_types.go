@@ -36,8 +36,8 @@ type ChallengeSpec struct {
 type ChallengeStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	StartedAt *metav1.Time `json:"startedAt,omitempty"`
-	// Status    CurrentStatus `json:"status,omitempty"`
+	StartedAt     *metav1.Time  `json:"startedAt,omitempty"`
+	CurrentStatus CurrentStatus `json:"currentStatus,omitempty"`
 }
 
 // +kubebuilder:object:root=true

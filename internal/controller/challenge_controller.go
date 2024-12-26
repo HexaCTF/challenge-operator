@@ -19,6 +19,8 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
+
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -27,7 +29,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"time"
 
 	appsv1alpha1 "github.com/hexactf/challenge-operator/api/v1alpha1"
 )
@@ -87,18 +88,21 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.handleError(ctx, &challenge, err)
 	}
 
-	// Initialize challenge if needed
-	if err := r.initializeChallenge(ctx, &challenge); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	// Create or verify Pod
-	if err := r.reconcileResources(ctx, &challenge, template, userLabel); err != nil {
-		return r.handleError(ctx, &challenge, err)
+	if challenge.Status.StartedAt == nil || challenge.Status.CurrentStatus.IsNothing() {
+		// Create or verify Pod
+		if err := r.reconcileResources(ctx, &challenge, template, userLabel); err != nil {
+			return r.handleError(ctx, &challenge, err)
+		}
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// Handle deletion
 	if time.Since(challenge.Status.StartedAt.Time) > challengeDuration {
+		return r.handleDeletion(ctx, &challenge, userLabel)
+	}
+
+	// r.Delete() 또는 kubectl delete 명령으로 삭제가 요청된 경우
+	if !challenge.DeletionTimestamp.IsZero() {
 		return r.handleDeletion(ctx, &challenge, userLabel)
 	}
 
@@ -140,6 +144,9 @@ func (r *ChallengeReconciler) handleError(ctx context.Context, challenge *appsv1
 	); err != nil {
 		log.FromContext(ctx).Error(err, "Failed to send status change to Kafka")
 	}
+
+	challenge.Status.CurrentStatus.SetError(err.Error())
+
 	return ctrl.Result{}, err
 }
 
@@ -148,29 +155,51 @@ func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *app
 	logger := log.FromContext(ctx)
 	logger.Info("Processing deletion", "challenge", challenge.Name)
 
-	// 1. 먼저 삭제 요청
-	if challenge.DeletionTimestamp.IsZero() {
-		if err := r.Delete(ctx, challenge); err != nil {
-			logger.Error(err, "Failed to request deletion")
+	if containsString(challenge.Finalizers, finalizerName) {
+		//  상태 변화
+		challenge.Status.CurrentStatus.SetTerminating()
+		if err := r.Status().Update(ctx, challenge); err != nil {
+			logger.Error(err, "Failed to update status to Terminating")
 			return ctrl.Result{RequeueAfter: time.Second * 5}, err
 		}
-		return ctrl.Result{Requeue: true}, nil // 즉시 재큐
+
+		if err := r.Kafka.SendStatusChange(
+			challenge.Labels["hexactf.io/user"],
+			challenge.Labels["hexactf.io/problemId"],
+			"Terminating",
+		); err != nil {
+			logger.Error(err, "Failed to send Terminating status to Kafka")
+			return ctrl.Result{RequeueAfter: time.Second * 5}, err
+		}
+
+		// Finalizer 제거
+		challenge.Finalizers = removeString(challenge.Finalizers, finalizerName)
+		if err := r.Update(ctx, challenge); err != nil {
+			logger.Error(err, "Failed to remove finalizer")
+			return ctrl.Result{RequeueAfter: time.Second * 5}, err
+		}
+
 	}
 
-	// 2. Kafka에 상태 전송
+	// DeletionTimestamp가 zero인지 확인 = 아직 삭제가 요청되지 않았는지 확인
+	// challenge.DeletionTimestamp.IsZero() kubectl delete 또는 r.Delete로 삭제가 요청되지 않은 상태
+	if err := r.Delete(ctx, challenge); err != nil {
+		logger.Error(err, "Failed to request deletion")
+		return ctrl.Result{RequeueAfter: time.Second * 5}, err
+	}
+
+	challenge.Status.CurrentStatus.SetDeleted()
+	if err := r.Update(ctx, challenge); err != nil {
+		logger.Error(err, "Failed to Change Deletion Status")
+		return ctrl.Result{RequeueAfter: time.Second * 5}, err
+	}
+
 	if err := r.Kafka.SendStatusChange(
 		challenge.Labels["hexactf.io/user"],
 		challenge.Labels["hexactf.io/problemId"],
 		"Deleted",
 	); err != nil {
 		logger.Error(err, "Failed to send status to Kafka")
-		return ctrl.Result{RequeueAfter: time.Second * 5}, err
-	}
-
-	// 3. 마지막으로 Finalizer 제거
-	challenge.Finalizers = removeString(challenge.Finalizers, finalizerName)
-	if err := r.Update(ctx, challenge); err != nil {
-		logger.Error(err, "Failed to remove finalizer")
 		return ctrl.Result{RequeueAfter: time.Second * 5}, err
 	}
 
@@ -189,15 +218,6 @@ func (r *ChallengeReconciler) loadChallengeTemplate(ctx context.Context, challen
 	return &template, nil
 }
 
-func (r *ChallengeReconciler) initializeChallenge(ctx context.Context, challenge *appsv1alpha1.Challenge) error {
-	if challenge.Status.StartedAt == nil {
-		now := metav1.Now()
-		challenge.Status.StartedAt = &now
-		return r.Status().Update(ctx, challenge)
-	}
-	return nil
-}
-
 // reconcileResources Pod 서비스를 생성해준다.
 // 생성이 모두 성공되면 Kafka로 생성 상태를 전송한다.
 func (r *ChallengeReconciler) reconcileResources(ctx context.Context, challenge *appsv1alpha1.Challenge, template *appsv1alpha1.ChallengeTemplate, userLabel string) error {
@@ -213,12 +233,20 @@ func (r *ChallengeReconciler) reconcileResources(ctx context.Context, challenge 
 		return err
 	}
 
+	// Created 메시지는 Pod와 Service가 처음 생성될 때만 한 번 전송
 	if challenge.Status.StartedAt == nil {
-		// StartedAt이 없으면 초기화
 		now := metav1.Now()
 		challenge.Status.StartedAt = &now
 		if err := r.Status().Update(ctx, challenge); err != nil {
 			logger.Error(err, "Failed to initialize StartedAt")
+			return err
+		}
+	}
+
+	if challenge.Status.CurrentStatus.IsNothing() {
+		challenge.Status.CurrentStatus.SetCreated()
+		if err := r.Status().Update(ctx, challenge); err != nil {
+			logger.Error(err, "Failed to update status to Created")
 			return err
 		}
 	}
@@ -228,9 +256,9 @@ func (r *ChallengeReconciler) reconcileResources(ctx context.Context, challenge 
 		challenge.Labels["hexactf.io/problemId"],
 		"Created",
 	); err != nil {
-		logger.Error(err, "Failed to send resource creation status to Kafka")
+		logger.Error(err, "Failed to send Created status to Kafka")
 	} else {
-		logger.Info("Successfully sent creation status to Kafka",
+		logger.Info("Successfully sent Created status to Kafka",
 			"user", challenge.Labels["hexactf.io/user"],
 			"problemId", challenge.Labels["hexactf.io/problemId"])
 	}
@@ -368,8 +396,8 @@ func (r *ChallengeReconciler) addFinalizer(ctx context.Context, challenge *appsv
 func (r *ChallengeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&appsv1alpha1.Challenge{}).
-		Owns(&v1.Pod{}). // Challenge가 소유한 Pod 감시
 		Owns(&v1.Service{}).
+		Owns(&v1.Pod{}). // Challenge가 소유한 Pod 감시
 		Named("challenge").
 		Complete(r)
 }
