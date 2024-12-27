@@ -53,6 +53,15 @@ spec:
           status:
             description: ChallengeStatus defines the observed state of Challenge.
             properties:
+              currentStatus:
+                properties:
+                  errorMsg:
+                    type: string
+                  state:
+                    type: string
+                required:
+                - errorMsg
+                type: object
               startedAt:
                 description: |-
                   INSERT ADDITIONAL STATUS FIELD - define observed state of cluster

@@ -5,6 +5,13 @@ type CurrentStatus struct {
 	ErrorMsg string `json:"errorMsg"`
 }
 
+func NewCurrentStatus() *CurrentStatus {
+	return &CurrentStatus{
+		State:    "None",
+		ErrorMsg: "",
+	}
+}
+
 func (c *CurrentStatus) String() string {
 	return c.State
 }

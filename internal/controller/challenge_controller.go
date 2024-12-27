@@ -29,6 +29,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
 
 	appsv1alpha1 "github.com/hexactf/challenge-operator/api/v1alpha1"
 )
@@ -63,49 +65,94 @@ type ChallengeReconciler struct {
 
 func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
-	logger := log.FromContext(ctx)
-	logger.Info("Starting reconciliation", "request", req)
+    logger := log.FromContext(ctx)
+    logger.Info("Starting reconciliation", "request", req)
 
-	// Fetch the Challenge resource
-	var challenge appsv1alpha1.Challenge
-	if err := r.Get(ctx, req.NamespacedName, &challenge); err != nil {
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+    var challenge appsv1alpha1.Challenge
+    if err := r.Get(ctx, req.NamespacedName, &challenge); err != nil {
+        return ctrl.Result{}, client.IgnoreNotFound(err)
+    }
+
+    userLabel := fmt.Sprintf("%s-%s",
+        challenge.Labels["hexactf.io/user"],
+        challenge.Labels["hexactf.io/problemId"])
+
+    // Check deletion first
+    if !challenge.DeletionTimestamp.IsZero() {
+        return r.handleDeletion(ctx, &challenge, userLabel)
+    }
+
+    // Add finalizer if not present
+    if !containsString(challenge.Finalizers, finalizerName) {
+        return r.addFinalizer(ctx, &challenge)
+    }
+
+    template, err := r.loadChallengeTemplate(ctx, &challenge)
+    if err != nil {
+        return r.handleError(ctx, &challenge, err)
+    }
+
+    // Initialize if needed
+    if challenge.Status.StartedAt == nil {
+        now := metav1.Now()
+        challenge.Status.StartedAt = &now
+        challenge.Status.CurrentStatus = *appsv1alpha1.NewCurrentStatus()
+        if err := r.Status().Update(ctx, &challenge); err != nil {
+            logger.Error(err, "Failed to initialize status")
+            return r.handleError(ctx, &challenge, err)
+        }
+        return ctrl.Result{Requeue: true}, nil
+    }
+
+    // Handle state transitions
+    switch {
+    case challenge.Status.CurrentStatus.IsNone():
+        if err := r.reconcileResources(ctx, &challenge, template, userLabel); err != nil {
+            return r.handleError(ctx, &challenge, err)
+        }
+        return ctrl.Result{Requeue: true}, nil
+
+    case challenge.Status.CurrentStatus.IsCreated():
+        // Check if Pod is running
+        var pod v1.Pod
+        err := r.Get(ctx, client.ObjectKey{
+            Namespace: challenge.Spec.Namespace,
+            Name:      fmt.Sprintf("pod-%s", userLabel),
+        }, &pod)
+        if err == nil && pod.Status.Phase == v1.PodRunning {
+            challenge.Status.CurrentStatus.SetRunning()
+            if err := r.Status().Update(ctx, &challenge); err != nil {
+                logger.Error(err, "Failed to update status to Running")
+                return r.handleError(ctx, &challenge, err)
+            }
+            // Send Running message
+            if err := r.Kafka.SendStatusChange(
+                challenge.Labels["hexactf.io/user"],
+                challenge.Labels["hexactf.io/problemId"],
+                "Running",
+            ); err != nil {
+                logger.Error(err, "Failed to send Running status")
+            }
+        }
 	}
 
-	// Build the unique label for resources
-	userLabel := fmt.Sprintf("%s-%s",
-		challenge.Labels["hexactf.io/user"],
-		challenge.Labels["hexactf.io/problemId"])
-
-	// Add finalizer if not present
-	if !containsString(challenge.Finalizers, finalizerName) {
-		return r.addFinalizer(ctx, &challenge)
-	}
-
-	// Load associated ChallengeTemplate
-	template, err := r.loadChallengeTemplate(ctx, &challenge)
-	if err != nil {
-		return r.handleError(ctx, &challenge, err)
-	}
-
-	if challenge.Status.StartedAt == nil || challenge.Status.CurrentStatus.IsNothing() {
-		// Create or verify Pod
-		if err := r.reconcileResources(ctx, &challenge, template, userLabel); err != nil {
-			return r.handleError(ctx, &challenge, err)
+	if !challenge.DeletionTimestamp.IsZero() || time.Since(challenge.Status.StartedAt.Time) > challengeDuration{
+		if err := r.Delete(ctx, &challenge); err != nil {
+			logger.Error(err, "Failed to request deletion")
+			return ctrl.Result{RequeueAfter: time.Second * 5}, err
 		}
-		return ctrl.Result{Requeue: true}, nil
-	}
 
-	// Handle deletion
-	if time.Since(challenge.Status.StartedAt.Time) > challengeDuration {
-		return r.handleDeletion(ctx, &challenge, userLabel)
-	}
+        // // Terminating 상태로 변경
+        // challenge.Status.CurrentStatus.SetTerminating()
+        // if err := r.Status().Update(ctx, &challenge); err != nil {
+        //     logger.Error(err, "Failed to update status to Terminating")
+        //     return ctrl.Result{RequeueAfter: time.Second * 5}, err
+        // }
 
-	// r.Delete() 또는 kubectl delete 명령으로 삭제가 요청된 경우
-	if !challenge.DeletionTimestamp.IsZero() {
-		return r.handleDeletion(ctx, &challenge, userLabel)
-	}
+        return r.handleDeletion(ctx, &challenge, userLabel)
 
+	}
+	
 	// Check for challenge timeout
 	timeoutReached, err := r.checkTimeout(ctx, &challenge)
 	if err != nil {
@@ -156,55 +203,62 @@ func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *app
 	logger.Info("Processing deletion", "challenge", challenge.Name)
 
 	if containsString(challenge.Finalizers, finalizerName) {
-		//  상태 변화
-		challenge.Status.CurrentStatus.SetTerminating()
-		if err := r.Status().Update(ctx, challenge); err != nil {
-			logger.Error(err, "Failed to update status to Terminating")
-			return ctrl.Result{RequeueAfter: time.Second * 5}, err
-		}
+        if err := r.removeFinalizer(ctx, challenge); err != nil {
+            logger.Error(err, "Failed to remove finalizer")
+            return ctrl.Result{RequeueAfter: time.Second * 5}, err
+        }
 
 		if err := r.Kafka.SendStatusChange(
 			challenge.Labels["hexactf.io/user"],
 			challenge.Labels["hexactf.io/problemId"],
-			"Terminating",
+			"Deleted",
 		); err != nil {
-			logger.Error(err, "Failed to send Terminating status to Kafka")
+			logger.Error(err, "Failed to send status to Kafka")
 			return ctrl.Result{RequeueAfter: time.Second * 5}, err
 		}
 
-		// Finalizer 제거
-		challenge.Finalizers = removeString(challenge.Finalizers, finalizerName)
-		if err := r.Update(ctx, challenge); err != nil {
-			logger.Error(err, "Failed to remove finalizer")
-			return ctrl.Result{RequeueAfter: time.Second * 5}, err
-		}
-
-	}
-
-	// DeletionTimestamp가 zero인지 확인 = 아직 삭제가 요청되지 않았는지 확인
-	// challenge.DeletionTimestamp.IsZero() kubectl delete 또는 r.Delete로 삭제가 요청되지 않은 상태
-	if err := r.Delete(ctx, challenge); err != nil {
-		logger.Error(err, "Failed to request deletion")
-		return ctrl.Result{RequeueAfter: time.Second * 5}, err
-	}
-
-	challenge.Status.CurrentStatus.SetDeleted()
-	if err := r.Update(ctx, challenge); err != nil {
-		logger.Error(err, "Failed to Change Deletion Status")
-		return ctrl.Result{RequeueAfter: time.Second * 5}, err
-	}
-
-	if err := r.Kafka.SendStatusChange(
-		challenge.Labels["hexactf.io/user"],
-		challenge.Labels["hexactf.io/problemId"],
-		"Deleted",
-	); err != nil {
-		logger.Error(err, "Failed to send status to Kafka")
-		return ctrl.Result{RequeueAfter: time.Second * 5}, err
 	}
 
 	logger.Info("Successfully completed deletion process")
 	return ctrl.Result{}, nil
+}
+
+// removeFinalizer handles the finalizer removal with retries
+func (r *ChallengeReconciler) removeFinalizer(ctx context.Context, challenge *appsv1alpha1.Challenge) error {
+    retries := 3
+    
+    for i := 0; i < retries; i++ {
+        // Get the latest version of the resource
+        var latestChallenge appsv1alpha1.Challenge
+        if err := r.Get(ctx, types.NamespacedName{
+            Namespace: challenge.Namespace,
+            Name:      challenge.Name,
+        }, &latestChallenge); err != nil {
+            if apierrors.IsNotFound(err) {
+                // Resource is already gone, nothing to do
+                return nil
+            }
+            return err
+        }
+
+        // Remove the finalizer
+        latestChallenge.Finalizers = removeString(latestChallenge.Finalizers, finalizerName)
+
+        // Try to update
+        if err := r.Update(ctx, &latestChallenge); err != nil {
+            if apierrors.IsConflict(err) {
+                // If there's a conflict, wait a bit and retry
+                time.Sleep(time.Millisecond * 100 * time.Duration(i+1))
+                continue
+            }
+            return err
+        }
+
+        // Update was successful
+        return nil
+    }
+
+    return fmt.Errorf("failed to remove finalizer after %d attempts", retries)
 }
 
 func (r *ChallengeReconciler) loadChallengeTemplate(ctx context.Context, challenge *appsv1alpha1.Challenge) (*appsv1alpha1.ChallengeTemplate, error) {
@@ -225,7 +279,7 @@ func (r *ChallengeReconciler) reconcileResources(ctx context.Context, challenge 
 
 	// Reconcile Pod
 	if err := r.reconcilePod(ctx, challenge, template, userLabel); err != nil {
-		return err
+		return err 
 	}
 
 	// Reconcile Service
@@ -233,36 +287,24 @@ func (r *ChallengeReconciler) reconcileResources(ctx context.Context, challenge 
 		return err
 	}
 
-	// Created 메시지는 Pod와 Service가 처음 생성될 때만 한 번 전송
-	if challenge.Status.StartedAt == nil {
-		now := metav1.Now()
-		challenge.Status.StartedAt = &now
-		if err := r.Status().Update(ctx, challenge); err != nil {
-			logger.Error(err, "Failed to initialize StartedAt")
-			return err
-		}
-	}
-
-	if challenge.Status.CurrentStatus.IsNothing() {
+	if challenge.Status.CurrentStatus.IsNone() {
 		challenge.Status.CurrentStatus.SetCreated()
 		if err := r.Status().Update(ctx, challenge); err != nil {
 			logger.Error(err, "Failed to update status to Created")
 			return err
 		}
+		if err := r.Kafka.SendStatusChange(
+			challenge.Labels["hexactf.io/user"],
+			challenge.Labels["hexactf.io/problemId"],
+			"Created",
+		); err != nil {
+			logger.Error(err, "Failed to send Created status to Kafka")
+		} else {
+			logger.Info("Successfully sent Created status to Kafka",
+				"user", challenge.Labels["hexactf.io/user"],
+				"problemId", challenge.Labels["hexactf.io/problemId"])
+		}
 	}
-
-	if err := r.Kafka.SendStatusChange(
-		challenge.Labels["hexactf.io/user"],
-		challenge.Labels["hexactf.io/problemId"],
-		"Created",
-	); err != nil {
-		logger.Error(err, "Failed to send Created status to Kafka")
-	} else {
-		logger.Info("Successfully sent Created status to Kafka",
-			"user", challenge.Labels["hexactf.io/user"],
-			"problemId", challenge.Labels["hexactf.io/problemId"])
-	}
-
 	return nil
 }
 
