@@ -1,11 +1,11 @@
 apiVersion: apps.hexactf.io/v1alpha1
 kind: Challenge
 metadata:
-  name: challenge-example2
+  name: challenge-nc-example
   namespace: default
   labels:
-    hexactf.io/user: "test2"
-    hexactf.io/problemId: "2"
+    hexactf.io/user: "tester"
+    hexactf.io/problemId: "111"
 spec:
   namespace: default
-  cTemplate: "ubuntu"
+  cTemplate: "ubuntu-nc"

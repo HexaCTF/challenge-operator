@@ -3,12 +3,14 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/IBM/sarama"
 	"time"
+
+	"github.com/IBM/sarama"
 )
 
 const (
-	kafkaTopic = "challenge-status"
+	kafkaTopic    = "challenge-status"
+	endpointTopic = "challenge-endpoint"
 )
 
 // KafkaProducer Kafka producer

@@ -17,31 +17,27 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
-type PodSpec struct {
-	Containers []v1.Container `json:"containers"`
+// +kubebuilder:object:generate=true
+type PodSpecTemplate struct {
+	Containers []corev1.Container `json:"containers,omitempty"`
 }
 
-type ServicePort struct {
-	Port       int32 `json:"port"`
-	TargetPort int32 `json:"targetPort"`
-	NodePort   int32 `json:"nodePort"`
+// +kubebuilder:object:generate=true
+type ServiceSpecTemplate struct {
+	Type  corev1.ServiceType   `json:"type,omitempty"`
+	Ports []corev1.ServicePort `json:"ports,omitempty"`
 }
 
-type ServiceSpec struct {
-	Type  string        `json:"type"`
-	Ports []ServicePort `json:"ports"`
-}
-
+// +kubebuilder:object:generate=true
 type ChallengeTemplateResources struct {
-	Pod     PodSpec     `json:"pod"`
-	Service ServiceSpec `json:"service"`
+	Pod     PodSpecTemplate     `json:"pod,omitempty"`
+	Service ServiceSpecTemplate `json:"service,omitempty"`
 }
 
 // ChallengeTemplateSpec defines the desired state of ChallengeTemplate.

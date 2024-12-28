@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -135,7 +136,7 @@ var _ = Describe("ChallengeReconciler", func() {
 			template := &appsv1alpha1.ChallengeTemplate{
 				Spec: appsv1alpha1.ChallengeTemplateSpec{
 					Resources: appsv1alpha1.ChallengeTemplateResources{
-						Pod: appsv1alpha1.PodSpec{
+						Pod: appsv1alpha1.PodSpecTemplate{
 							Containers: []v1.Container{
 								{
 									Name:  "test-container",
@@ -191,7 +192,7 @@ var _ = Describe("ChallengeReconciler", func() {
 			template := &appsv1alpha1.ChallengeTemplate{
 				Spec: appsv1alpha1.ChallengeTemplateSpec{
 					Resources: appsv1alpha1.ChallengeTemplateResources{
-						Pod: appsv1alpha1.PodSpec{
+						Pod: appsv1alpha1.PodSpecTemplate{
 							Containers: []v1.Container{
 								{
 									Name:  "test-container",
@@ -237,9 +238,9 @@ var _ = Describe("ChallengeReconciler", func() {
 			template := &appsv1alpha1.ChallengeTemplate{
 				Spec: appsv1alpha1.ChallengeTemplateSpec{
 					Resources: appsv1alpha1.ChallengeTemplateResources{
-						Service: appsv1alpha1.ServiceSpec{
+						Service: appsv1alpha1.ServiceSpecTemplate{
 							Type: "NodePort",
-							Ports: []appsv1alpha1.ServicePort{
+							Ports: []v1.ServicePort{
 								{
 									Port:       80,
 									TargetPort: 8080,

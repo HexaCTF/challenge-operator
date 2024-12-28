@@ -22,15 +22,14 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
 
 	appsv1alpha1 "github.com/hexactf/challenge-operator/api/v1alpha1"
 )
@@ -65,94 +64,120 @@ type ChallengeReconciler struct {
 
 func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
-    logger := log.FromContext(ctx)
-    logger.Info("Starting reconciliation", "request", req)
+	logger := log.FromContext(ctx)
+	logger.Info("Starting reconciliation", "request", req)
 
-    var challenge appsv1alpha1.Challenge
-    if err := r.Get(ctx, req.NamespacedName, &challenge); err != nil {
-        return ctrl.Result{}, client.IgnoreNotFound(err)
-    }
-
-    userLabel := fmt.Sprintf("%s-%s",
-        challenge.Labels["hexactf.io/user"],
-        challenge.Labels["hexactf.io/problemId"])
-
-    // Check deletion first
-    if !challenge.DeletionTimestamp.IsZero() {
-        return r.handleDeletion(ctx, &challenge, userLabel)
-    }
-
-    // Add finalizer if not present
-    if !containsString(challenge.Finalizers, finalizerName) {
-        return r.addFinalizer(ctx, &challenge)
-    }
-
-    template, err := r.loadChallengeTemplate(ctx, &challenge)
-    if err != nil {
-        return r.handleError(ctx, &challenge, err)
-    }
-
-    // Initialize if needed
-    if challenge.Status.StartedAt == nil {
-        now := metav1.Now()
-        challenge.Status.StartedAt = &now
-        challenge.Status.CurrentStatus = *appsv1alpha1.NewCurrentStatus()
-        if err := r.Status().Update(ctx, &challenge); err != nil {
-            logger.Error(err, "Failed to initialize status")
-            return r.handleError(ctx, &challenge, err)
-        }
-        return ctrl.Result{Requeue: true}, nil
-    }
-
-    // Handle state transitions
-    switch {
-    case challenge.Status.CurrentStatus.IsNone():
-        if err := r.reconcileResources(ctx, &challenge, template, userLabel); err != nil {
-            return r.handleError(ctx, &challenge, err)
-        }
-        return ctrl.Result{Requeue: true}, nil
-
-    case challenge.Status.CurrentStatus.IsCreated():
-        // Check if Pod is running
-        var pod v1.Pod
-        err := r.Get(ctx, client.ObjectKey{
-            Namespace: challenge.Spec.Namespace,
-            Name:      fmt.Sprintf("pod-%s", userLabel),
-        }, &pod)
-        if err == nil && pod.Status.Phase == v1.PodRunning {
-            challenge.Status.CurrentStatus.SetRunning()
-            if err := r.Status().Update(ctx, &challenge); err != nil {
-                logger.Error(err, "Failed to update status to Running")
-                return r.handleError(ctx, &challenge, err)
-            }
-            // Send Running message
-            if err := r.Kafka.SendStatusChange(
-                challenge.Labels["hexactf.io/user"],
-                challenge.Labels["hexactf.io/problemId"],
-                "Running",
-            ); err != nil {
-                logger.Error(err, "Failed to send Running status")
-            }
-        }
+	var challenge appsv1alpha1.Challenge
+	if err := r.Get(ctx, req.NamespacedName, &challenge); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	if !challenge.DeletionTimestamp.IsZero() || time.Since(challenge.Status.StartedAt.Time) > challengeDuration{
+	userLabel := fmt.Sprintf("%s-%s",
+		challenge.Labels["hexactf.io/user"],
+		challenge.Labels["hexactf.io/problemId"])
+
+	// Check deletion first
+	if !challenge.DeletionTimestamp.IsZero() {
+		return r.handleDeletion(ctx, &challenge, userLabel)
+	}
+
+	// Add finalizer if not present
+	if !containsString(challenge.Finalizers, finalizerName) {
+		return r.addFinalizer(ctx, &challenge)
+	}
+
+	template, err := r.loadChallengeTemplate(ctx, &challenge)
+	if err != nil {
+		return r.handleError(ctx, &challenge, err)
+	}
+
+	// Initialize if needed
+	if challenge.Status.StartedAt == nil {
+		now := metav1.Now()
+		challenge.Status.StartedAt = &now
+		challenge.Status.CurrentStatus = *appsv1alpha1.NewCurrentStatus()
+		if err := r.Status().Update(ctx, &challenge); err != nil {
+			logger.Error(err, "Failed to initialize status")
+			return r.handleError(ctx, &challenge, err)
+		}
+		return ctrl.Result{Requeue: true}, nil
+	}
+
+	// Handle state transitions
+	switch {
+	case challenge.Status.CurrentStatus.IsNone():
+		if err := r.reconcileResources(ctx, &challenge, template, userLabel); err != nil {
+			return r.handleError(ctx, &challenge, err)
+		}
+		return ctrl.Result{Requeue: true}, nil
+
+	case challenge.Status.CurrentStatus.IsCreated():
+		// Check if Pod is running
+		var pod v1.Pod
+		err := r.Get(ctx, client.ObjectKey{
+			Namespace: challenge.Spec.Namespace,
+			Name:      fmt.Sprintf("pod-%s", userLabel),
+		}, &pod)
+		if err == nil && pod.Status.Phase == v1.PodRunning {
+			challenge.Status.CurrentStatus.SetRunning()
+			if err := r.Status().Update(ctx, &challenge); err != nil {
+				logger.Error(err, "Failed to update status to Running")
+				return r.handleError(ctx, &challenge, err)
+			}
+			// Send Running message
+			if err := r.Kafka.SendStatusChange(
+				challenge.Labels["hexactf.io/user"],
+				challenge.Labels["hexactf.io/problemId"],
+				"Running",
+			); err != nil {
+				logger.Error(err, "Failed to send Running status")
+			}
+		}
+
+		var service v1.Service
+		err = r.Get(ctx, client.ObjectKey{
+			Namespace: challenge.Spec.Namespace,
+			Name:      fmt.Sprintf("svc-%s", userLabel),
+		}, &service)
+		if err != nil {
+			return r.handleError(ctx, &challenge, err)
+		}
+
+		// 서비스가 있고 NodePort가 할당되었다면
+		if service.Spec.Type == v1.ServiceTypeNodePort {
+			for _, port := range service.Spec.Ports {
+				// NodePort가 할당된 것을 확인
+				if port.NodePort != 0 {
+					// Status에 NodePort 업데이트
+					challenge.Status.AllocatedNodePort = port.NodePort
+					if err := r.Status().Update(ctx, &challenge); err != nil {
+						return ctrl.Result{}, err
+					}
+					// NodePort를 찾았으니 loop 종료
+					break
+				}
+			}
+		}
+
+	}
+
+	if !challenge.DeletionTimestamp.IsZero() || time.Since(challenge.Status.StartedAt.Time) > challengeDuration {
 		if err := r.Delete(ctx, &challenge); err != nil {
 			logger.Error(err, "Failed to request deletion")
 			return ctrl.Result{RequeueAfter: time.Second * 5}, err
 		}
 
-        // // Terminating 상태로 변경
-        // challenge.Status.CurrentStatus.SetTerminating()
-        // if err := r.Status().Update(ctx, &challenge); err != nil {
-        //     logger.Error(err, "Failed to update status to Terminating")
-        //     return ctrl.Result{RequeueAfter: time.Second * 5}, err
-        // }
+		// // Terminating 상태로 변경
+		// challenge.Status.CurrentStatus.SetTerminating()
+		// if err := r.Status().Update(ctx, &challenge); err != nil {
+		//     logger.Error(err, "Failed to update status to Terminating")
+		//     return ctrl.Result{RequeueAfter: time.Second * 5}, err
+		// }
 
-        return r.handleDeletion(ctx, &challenge, userLabel)
+		return r.handleDeletion(ctx, &challenge, userLabel)
 
 	}
-	
+
 	// Check for challenge timeout
 	timeoutReached, err := r.checkTimeout(ctx, &challenge)
 	if err != nil {
@@ -203,10 +228,10 @@ func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *app
 	logger.Info("Processing deletion", "challenge", challenge.Name)
 
 	if containsString(challenge.Finalizers, finalizerName) {
-        if err := r.removeFinalizer(ctx, challenge); err != nil {
-            logger.Error(err, "Failed to remove finalizer")
-            return ctrl.Result{RequeueAfter: time.Second * 5}, err
-        }
+		if err := r.removeFinalizer(ctx, challenge); err != nil {
+			logger.Error(err, "Failed to remove finalizer")
+			return ctrl.Result{RequeueAfter: time.Second * 5}, err
+		}
 
 		if err := r.Kafka.SendStatusChange(
 			challenge.Labels["hexactf.io/user"],
@@ -225,40 +250,40 @@ func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *app
 
 // removeFinalizer handles the finalizer removal with retries
 func (r *ChallengeReconciler) removeFinalizer(ctx context.Context, challenge *appsv1alpha1.Challenge) error {
-    retries := 3
-    
-    for i := 0; i < retries; i++ {
-        // Get the latest version of the resource
-        var latestChallenge appsv1alpha1.Challenge
-        if err := r.Get(ctx, types.NamespacedName{
-            Namespace: challenge.Namespace,
-            Name:      challenge.Name,
-        }, &latestChallenge); err != nil {
-            if apierrors.IsNotFound(err) {
-                // Resource is already gone, nothing to do
-                return nil
-            }
-            return err
-        }
+	retries := 3
 
-        // Remove the finalizer
-        latestChallenge.Finalizers = removeString(latestChallenge.Finalizers, finalizerName)
+	for i := 0; i < retries; i++ {
+		// Get the latest version of the resource
+		var latestChallenge appsv1alpha1.Challenge
+		if err := r.Get(ctx, types.NamespacedName{
+			Namespace: challenge.Namespace,
+			Name:      challenge.Name,
+		}, &latestChallenge); err != nil {
+			if apierrors.IsNotFound(err) {
+				// Resource is already gone, nothing to do
+				return nil
+			}
+			return err
+		}
 
-        // Try to update
-        if err := r.Update(ctx, &latestChallenge); err != nil {
-            if apierrors.IsConflict(err) {
-                // If there's a conflict, wait a bit and retry
-                time.Sleep(time.Millisecond * 100 * time.Duration(i+1))
-                continue
-            }
-            return err
-        }
+		// Remove the finalizer
+		latestChallenge.Finalizers = removeString(latestChallenge.Finalizers, finalizerName)
 
-        // Update was successful
-        return nil
-    }
+		// Try to update
+		if err := r.Update(ctx, &latestChallenge); err != nil {
+			if apierrors.IsConflict(err) {
+				// If there's a conflict, wait a bit and retry
+				time.Sleep(time.Millisecond * 100 * time.Duration(i+1))
+				continue
+			}
+			return err
+		}
 
-    return fmt.Errorf("failed to remove finalizer after %d attempts", retries)
+		// Update was successful
+		return nil
+	}
+
+	return fmt.Errorf("failed to remove finalizer after %d attempts", retries)
 }
 
 func (r *ChallengeReconciler) loadChallengeTemplate(ctx context.Context, challenge *appsv1alpha1.Challenge) (*appsv1alpha1.ChallengeTemplate, error) {
@@ -279,7 +304,7 @@ func (r *ChallengeReconciler) reconcileResources(ctx context.Context, challenge 
 
 	// Reconcile Pod
 	if err := r.reconcilePod(ctx, challenge, template, userLabel); err != nil {
-		return err 
+		return err
 	}
 
 	// Reconcile Service
@@ -357,6 +382,16 @@ func (r *ChallengeReconciler) reconcileService(ctx context.Context, challenge *a
 			return fmt.Errorf("failed to check existing service: %w", err)
 		}
 
+		// Service 생성 전에 template의 Service 스펙 검증
+		serviceSpec := template.Spec.Resources.Service
+		if serviceSpec.Type == v1.ServiceTypeNodePort {
+			// NodePort 타입이면 Ports 확인
+			for i := range serviceSpec.Ports {
+				// NodePort 필드는 제거하고 자동 할당되도록
+				serviceSpec.Ports[i].NodePort = 0
+			}
+		}
+
 		// Create new Service
 		service := v1.Service{
 			ObjectMeta: metav1.ObjectMeta{
@@ -370,8 +405,8 @@ func (r *ChallengeReconciler) reconcileService(ctx context.Context, challenge *a
 				Selector: map[string]string{
 					"hexactf.io/challenge": userLabel,
 				},
-				Type:  v1.ServiceType(template.Spec.Resources.Service.Type),
-				Ports: r.buildServicePorts(template),
+				Type:  serviceSpec.Type,
+				Ports: serviceSpec.Ports,
 			},
 		}
 
@@ -386,18 +421,6 @@ func (r *ChallengeReconciler) reconcileService(ctx context.Context, challenge *a
 	}
 
 	return nil
-}
-
-func (r *ChallengeReconciler) buildServicePorts(template *appsv1alpha1.ChallengeTemplate) []v1.ServicePort {
-	ports := make([]v1.ServicePort, 0, len(template.Spec.Resources.Service.Ports))
-	for _, p := range template.Spec.Resources.Service.Ports {
-		ports = append(ports, v1.ServicePort{
-			Port:       p.Port,
-			TargetPort: intstr.FromInt(int(p.TargetPort)),
-			NodePort:   p.NodePort,
-		})
-	}
-	return ports
 }
 
 func (r *ChallengeReconciler) checkTimeout(ctx context.Context, challenge *appsv1alpha1.Challenge) (bool, error) {

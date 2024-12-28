@@ -1,0 +1,19 @@
+apiVersion: apps.hexactf.io/v1alpha1
+kind: ChallengeTemplate
+metadata:
+  name: ubuntu-nc
+spec:
+  type: "ubuntu"
+  resources:
+    pod:
+      containers:
+        - name: ubuntu-nc
+          image: sample/ubuntu-nc:latest
+          ports:
+            - containerPort: 12345
+    service:
+      type: NodePort
+      ports:
+        - port: 12345
+          targetPort: 12345
+          nodePort: 0

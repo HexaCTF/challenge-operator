@@ -27,8 +27,8 @@ import (
 type ChallengeSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Namespace string `json:"namespace"`
-	CTemplate string `json:"cTemplate"`
+	Namespace string `json:"namespace,omitempty"`
+	CTemplate string `json:"cTemplate,omitempty"`
 	// CTemplateValues map[string]string `json:"cTemplateValues"`
 }
 
@@ -38,6 +38,9 @@ type ChallengeStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
 	StartedAt     *metav1.Time  `json:"startedAt,omitempty"`
 	CurrentStatus CurrentStatus `json:"currentStatus,omitempty"`
+
+	// +optional
+	AllocatedNodePort int32 `json:"allocatedNodePort,omitempty"`
 }
 
 // +kubebuilder:object:root=true
