@@ -1,0 +1,23 @@
+# permissions for end users to view challengedefinitions.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: challenge-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: challengedefinition-viewer-role
+rules:
+- apiGroups:
+  - apps.hexactf.io
+  resources:
+  - challengedefinitions
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - apps.hexactf.io
+  resources:
+  - challengedefinitions/status
+  verbs:
+  - get

@@ -39,7 +39,8 @@ spec:
           spec:
             description: ChallengeSpec defines the desired state of Challenge.
             properties:
-              cTemplate:
+              definition:
+                description: 'Definition: ChallengeDefinition 이름'
                 type: string
               namespace:
                 description: |-
@@ -47,16 +48,24 @@ spec:
                   Important: Run "make" to regenerate code after modifying this file
                 type: string
             required:
-            - cTemplate
+            - definition
             - namespace
             type: object
           status:
             description: ChallengeStatus defines the observed state of Challenge.
             properties:
+              currentStatus:
+                description: 'CurrentStatus: Challenge 현재 상태'
+                properties:
+                  errorMsg:
+                    type: string
+                  state:
+                    type: string
+                required:
+                - errorMsg
+                type: object
               startedAt:
-                description: |-
-                  INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-                  Important: Run "make" to regenerate code after modifying this file
+                description: 'StartedAt: Challenge 시작 시간'
                 format: date-time
                 type: string
             type: object

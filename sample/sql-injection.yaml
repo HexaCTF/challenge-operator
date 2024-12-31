@@ -1,0 +1,64 @@
+apiVersion: challenges.example.com/v1
+kind: ChallengeTemplate
+metadata:
+  name: sql-injection-basic
+spec:
+  components:
+    - name: vulnerable-app  # 취약한 웹 애플리케이션
+      deployment:
+        spec:
+          replicas: 1
+          template:
+            spec:
+              containers:
+                - name: web
+                  image: vulnerable-web-app:1.0
+                  env:
+                    - name: DB_HOST
+                      value: "$(USER_ID)-db"  # 동적으로 사용자별 DB 서비스 이름 설정
+                    - name: DB_USER
+                      valueFrom:
+                        secretKeyRef:
+                          name: db-secret
+                          key: username
+                    - name: DB_PASSWORD
+                      valueFrom:
+                        secretKeyRef:
+                          name: db-secret
+                          key: password
+      service:
+        spec:
+          ports:
+            - port: 80
+              targetPort: 8080
+
+    - name: db  # 데이터베이스
+      deployment:
+        spec:
+          replicas: 1
+          template:
+            spec:
+              containers:
+                - name: mysql
+                  image: mysql:5.7  # 의도적으로 이전 버전 사용
+                  env:
+                    - name: MYSQL_ROOT_PASSWORD
+                      valueFrom:
+                        secretKeyRef:
+                          name: db-secret
+                          key: root-password
+                  volumeMounts:
+                    - name: init-db
+                      mountPath: /docker-entrypoint-initdb.d
+                    - name: mysql-data
+                      mountPath: /var/lib/mysql
+              volumes:
+                - name: init-db
+                  configMap:
+                    name: sql-injection-init-db
+                - name: mysql-data
+                  emptyDir: {}  # 연습용이므로 임시 볼륨 사용
+      service:
+        spec:
+          ports:
+            - port: 3306

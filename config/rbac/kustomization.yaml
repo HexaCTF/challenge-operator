@@ -22,6 +22,8 @@ resources:
 # default, aiding admins in cluster management. Those roles are
 # not used by the Project itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
+- challengedefinition_editor_role.yaml
+- challengedefinition_viewer_role.yaml
 - challengetemplate_editor_role.yaml
 - challengetemplate_viewer_role.yaml
 - challenge_editor_role.yaml
