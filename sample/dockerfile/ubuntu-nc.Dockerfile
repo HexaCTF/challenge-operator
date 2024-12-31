@@ -7,7 +7,6 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 
-
 EXPOSE 12345
 
 CMD ["/bin/sh", "-c", "socat TCP-LISTEN:12345,reuseaddr,fork EXEC:/bin/sh,pty,stderr,setsid,sigint,sane"]
