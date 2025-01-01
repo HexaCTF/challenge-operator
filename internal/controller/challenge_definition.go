@@ -6,8 +6,11 @@ import (
 
 	hexactfproj "github.com/hexactf/challenge-operator/api/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
-
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -16,21 +19,25 @@ func (r *ChallengeReconciler) LoadChallengeDefinition(ctx context.Context, chall
 	if err != nil {
 		log.Error(err, "failed to get ChallengeDefinition %s", challenge.Spec.Definition)
 		return err
-		}
-		return r.Client.Create(ctx, deploy)
+
 	}
 
 	for _, component := range definition.Spec.Components {
 		identifier := NewChallengeIdentifier(challenge, component)
 
-		err := r.LoadDeployment(ctx, challenge, component, identifier)
+		err = r.LoadDeployment(ctx, challenge, component, identifier)
 		if err != nil {
-			log.Error(err, "failed to load Deployment %s", identifier.GetPrefix())
+			log.Error(err, "failed to load Deployment %s", identifier.GetDeploymentPrefix())
 			return err
 		}
 
+		err = r.LoadService(ctx, challenge, component, identifier)
+		if err != nil {
+			log.Error(err, "failed to load Service %s", identifier.GetServicePrefix())
+			return err
+		}
 	}
-
+	return nil
 }
 
 // GetChallengeDefinition ChallengeDefinition 리소스를 로드
@@ -54,6 +61,20 @@ func (r *ChallengeReconciler) LoadDeployment(ctx context.Context, challenge *hex
 			Namespace: challenge.Namespace,
 			Labels:    identifier.GetLabels(),
 		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &component.Deployment.Spec.Replicas,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: identifier.GetLabels(),
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: identifier.GetLabels(),
+				},
+				Spec: corev1.PodSpec{
+					Containers: component.Deployment.Spec.Template.Spec.Containers,
+				},
+			},
+		},
 	}
 
 	// Deployment가 존재하는지 확인
@@ -65,8 +86,6 @@ func (r *ChallengeReconciler) LoadDeployment(ctx context.Context, challenge *hex
 	if err != nil {
 		if errors.IsNotFound(err) {
 			log.Info("Creating Deployment", "Deployment.Namespace", deploy.Namespace, "Deployment.Name", deploy.Name)
-
-			deploy.Spec = *component.Deployment.Spec
 
 			// Owner Reference 설정
 			if err := ctrl.SetControllerReference(challenge, deploy, r.Scheme); err != nil {
@@ -86,5 +105,70 @@ func (r *ChallengeReconciler) LoadDeployment(ctx context.Context, challenge *hex
 	}
 
 	return nil
+}
 
+// LoadService Service 리소스 생성
+// TODO(Addition): 랜덤으로 NodePort를 할당
+func (r *ChallengeReconciler) LoadService(ctx context.Context, challenge *hexactfproj.Challenge,
+	component hexactfproj.Component, identifier *ChallengeIdentifier) error {
+
+	log.Info("Loading service",
+		"challenge", challenge.Name,
+		"component", component.Name,
+		"prefix", identifier.GetServicePrefix())
+
+	// Service가 nil이면 처리하지 않음
+	if component.Service == nil {
+		log.Info("No service defined for component",
+			"component", component.Name)
+		return nil
+	}
+
+	// 새로운 Service 객체 생성
+	service := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      identifier.GetServicePrefix(),
+			Namespace: challenge.Namespace,
+			Labels:    identifier.GetLabels(),
+		},
+		Spec: corev1.ServiceSpec{
+			Selector: identifier.GetLabels(),
+			Ports:    component.Service.Spec.Ports,
+			Type:     component.Service.Spec.Type,
+		},
+	}
+
+	// Service가 존재하는지 확인
+	err := r.Get(ctx, types.NamespacedName{
+		Name:      identifier.GetServicePrefix(),
+		Namespace: challenge.Namespace,
+	}, service)
+
+	if err != nil {
+		if errors.IsNotFound(err) {
+			log.Info("Creating new service",
+				"name", identifier.GetServicePrefix(),
+				"namespace", challenge.Namespace)
+
+			// Owner Reference 설정
+			if err := ctrl.SetControllerReference(challenge, service, r.Scheme); err != nil {
+				log.Error(err, "Failed to set controller reference for Service")
+				return err
+			}
+
+			if err := r.Create(ctx, service); err != nil {
+				log.Error(err, "Failed to create Service")
+				return err
+			}
+
+			log.Info("Successfully created service",
+				"name", identifier.GetServicePrefix())
+
+			return nil
+		}
+		log.Error(err, "Failed to get Service")
+		return err
+	}
+
+	return nil
 }

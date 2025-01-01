@@ -5,13 +5,18 @@ import (
 )
 
 type ChallengeIdentifier struct {
-	prefix string
-	labels map[string]string
+	prefix     string
+	matchlabel map[string]string
+	labels     map[string]string
 }
 
 func NewChallengeIdentifier(challenge *hexactfproj.Challenge, component hexactfproj.Component) *ChallengeIdentifier {
+	label := challenge.Labels["hexactf.io/challengeId"] + "-" + component.Name + "-" + challenge.Labels["hexactf.io/user"]
 	return &ChallengeIdentifier{
-		prefix: challenge.Labels["hexactf.io/challengeId"] + "-" + component.Name + "-" + challenge.Labels["hexactf.io/user"],
+		prefix: label,
+		matchlabel: map[string]string{
+			"hexactf.io/label": label,
+		},
 		labels: map[string]string{
 			"hexactf.io/user":        challenge.Labels["hexactf.io/user"],
 			"hexactf.io/challengeId": challenge.Labels["hexactf.io/challengeId"],
@@ -26,4 +31,12 @@ func (c *ChallengeIdentifier) GetLabels() map[string]string {
 
 func (c *ChallengeIdentifier) GetDeploymentPrefix() string {
 	return c.prefix + "-deplioy"
+}
+
+func (c *ChallengeIdentifier) GetServicePrefix() string {
+	return c.prefix + "-service"
+}
+
+func (c *ChallengeIdentifier) GetMatchLabels() map[string]string {
+	return c.matchlabel
 }
