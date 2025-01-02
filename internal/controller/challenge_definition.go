@@ -14,8 +14,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func (r *ChallengeReconciler) LoadChallengeDefinition(ctx context.Context, challenge *hexactfproj.Challenge) error {
-	definition, err := r.GetChallengeDefinition(ctx, challenge)
+func (r *ChallengeReconciler) loadChallengeDefinition(ctx context.Context, challenge *hexactfproj.Challenge) error {
+	definition, err := r.getChallengeDefinition(ctx, challenge)
 	if err != nil {
 		log.Error(err, "failed to get ChallengeDefinition %s", challenge.Spec.Definition)
 		return err
@@ -25,13 +25,13 @@ func (r *ChallengeReconciler) LoadChallengeDefinition(ctx context.Context, chall
 	for _, component := range definition.Spec.Components {
 		identifier := NewChallengeIdentifier(challenge, component)
 
-		err = r.LoadDeployment(ctx, challenge, component, identifier)
+		err = r.loadDeployment(ctx, challenge, component, identifier)
 		if err != nil {
 			log.Error(err, "failed to load Deployment %s", identifier.GetDeploymentPrefix())
 			return err
 		}
 
-		err = r.LoadService(ctx, challenge, component, identifier)
+		err = r.loadService(ctx, challenge, component, identifier)
 		if err != nil {
 			log.Error(err, "failed to load Service %s", identifier.GetServicePrefix())
 			return err
@@ -41,7 +41,7 @@ func (r *ChallengeReconciler) LoadChallengeDefinition(ctx context.Context, chall
 }
 
 // GetChallengeDefinition ChallengeDefinition 리소스를 로드
-func (r *ChallengeReconciler) GetChallengeDefinition(ctx context.Context, challenge *hexactfproj.Challenge) (*hexactfproj.ChallengeDefinition, error) {
+func (r *ChallengeReconciler) getChallengeDefinition(ctx context.Context, challenge *hexactfproj.Challenge) (*hexactfproj.ChallengeDefinition, error) {
 	var definition hexactfproj.ChallengeDefinition
 	if err := r.Get(ctx, client.ObjectKey{
 		Namespace: challenge.Namespace,
@@ -53,7 +53,7 @@ func (r *ChallengeReconciler) GetChallengeDefinition(ctx context.Context, challe
 	return &definition, nil
 }
 
-func (r *ChallengeReconciler) LoadDeployment(ctx context.Context, challenge *hexactfproj.Challenge, component hexactfproj.Component, identifier *ChallengeIdentifier) error {
+func (r *ChallengeReconciler) loadDeployment(ctx context.Context, challenge *hexactfproj.Challenge, component hexactfproj.Component, identifier *ChallengeIdentifier) error {
 
 	deploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -109,7 +109,7 @@ func (r *ChallengeReconciler) LoadDeployment(ctx context.Context, challenge *hex
 
 // LoadService Service 리소스 생성
 // TODO(Addition): 랜덤으로 NodePort를 할당
-func (r *ChallengeReconciler) LoadService(ctx context.Context, challenge *hexactfproj.Challenge,
+func (r *ChallengeReconciler) loadService(ctx context.Context, challenge *hexactfproj.Challenge,
 	component hexactfproj.Component, identifier *ChallengeIdentifier) error {
 
 	log.Info("Loading service",

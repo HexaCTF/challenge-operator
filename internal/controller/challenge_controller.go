@@ -23,6 +23,7 @@ import (
 	hexactfproj "github.com/hexactf/challenge-operator/api/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -30,10 +31,9 @@ import (
 )
 
 const (
-	finalizerName     = "finalizer.hexactf.io/challenge"
 	challengeDuration = 2 * time.Minute
-	requeueInterval   = 1 * time.Minute
-	warningThreshold  = 25 * time.Minute // Time to start warning about impending timeout
+	requeueInterval   = 30 * time.Second
+	warningThreshold  = 2 * time.Minute // Time to start warning about impending timeout
 )
 
 var log = logr.Log.WithName("ChallengeController")
@@ -62,6 +62,47 @@ type ChallengeReconciler struct {
 
 func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
+	challenge := &hexactfproj.Challenge{}
+	if err := r.Get(ctx, req.NamespacedName, challenge); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	err := r.handleFinalizer(ctx, challenge)
+	if err != nil {
+		return r.handleError(ctx, challenge, err)
+	}
+
+	switch {
+	case challenge.Status.CurrentStatus.IsNone():
+		challenge.Status.CurrentStatus.SetCreating()
+		if err := r.Status().Update(ctx, challenge); err != nil {
+			return r.handleError(ctx, challenge, err)
+		}
+
+		err = r.loadChallengeDefinition(ctx, challenge)
+		if err != nil {
+			return r.handleError(ctx, challenge, err)
+		}
+
+		challenge.Status.CurrentStatus.SetRunning()
+		now := metav1.Now()
+		challenge.Status.StartedAt = &now
+		if err := r.Status().Update(ctx, challenge); err != nil {
+			return r.handleError(ctx, challenge, err)
+		}
+
+		return ctrl.Result{RequeueAfter: requeueInterval}, nil
+	case challenge.Status.CurrentStatus.IsRunning():
+		if !challenge.DeletionTimestamp.IsZero() || time.Since(challenge.Status.StartedAt.Time) > challengeDuration {
+			if err := r.Delete(ctx, challenge); err != nil {
+				log.Error(err, "Failed to request deletion")
+				return r.handleError(ctx, challenge, err)
+			}
+			return ctrl.Result{RequeueAfter: time.Second * 5}, nil
+		}
+
+	}
+	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
