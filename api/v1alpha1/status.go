@@ -16,17 +16,17 @@ func (c *CurrentStatus) String() string {
 	return c.State
 }
 
-func (c *CurrentStatus) SetCreated() {
-	c.State = "Created"
+func (c *CurrentStatus) SetCreating() {
+	c.State = "Creating"
 }
 
 func (c *CurrentStatus) SetRunning() {
 	c.State = "Running"
 }
 
-func (c *CurrentStatus) SetError(err string) {
+func (c *CurrentStatus) SetError(err error) {
 	c.State = "Error"
-	c.ErrorMsg = err
+	c.ErrorMsg = err.Error()
 }
 
 func (c *CurrentStatus) SetTerminating() {
