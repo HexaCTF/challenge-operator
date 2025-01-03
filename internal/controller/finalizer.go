@@ -8,50 +8,25 @@ import (
 	hexactfproj "github.com/hexactf/challenge-operator/api/v1alpha1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 const (
 	challengeFinalizer = "challenge.hexactf.dev/finalizer"
 )
 
-func (r *ChallengeReconciler) handleFinalizer(ctx context.Context, challenge *hexactfproj.Challenge) error {
-	// 삭제 중인 Challenge 처리
-	if !challenge.ObjectMeta.DeletionTimestamp.IsZero() {
-		if containsString(challenge.ObjectMeta.Finalizers, challengeFinalizer) {
-			if err := r.cleanupChallenge(ctx, challenge); err != nil {
-				return err
-			}
-		}
-		return nil
+func (r *ChallengeReconciler) addFinalizer(ctx context.Context, challenge *hexactfproj.Challenge) (ctrl.Result, error) {
+	challenge.Finalizers = append(challenge.Finalizers, challengeFinalizer)
+	if err := r.Update(ctx, challenge); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 	}
-
-	// Finalizer 추가
-	if !containsString(challenge.ObjectMeta.Finalizers, challengeFinalizer) {
-		// 최신 버전의 Challenge를 가져옴
-		var latestChallenge hexactfproj.Challenge
-		if err := r.Get(ctx, types.NamespacedName{
-			Namespace: challenge.Namespace,
-			Name:      challenge.Name,
-		}, &latestChallenge); err != nil {
-			return err
-		}
-
-		// Finalizer 추가
-		controllerutil.AddFinalizer(&latestChallenge, challengeFinalizer)
-		if err := r.Update(ctx, &latestChallenge); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return ctrl.Result{}, nil
 }
 
-func (r *ChallengeReconciler) cleanupChallenge(ctx context.Context, challenge *hexactfproj.Challenge) error {
+func (r *ChallengeReconciler) removeFinalizer(ctx context.Context, challenge *hexactfproj.Challenge) error {
 	retries := 3
 
 	for i := 0; i < retries; i++ {
-		// Get the latest version of the resource
 		var latestChallenge hexactfproj.Challenge
 		if err := r.Get(ctx, types.NamespacedName{
 			Namespace: challenge.Namespace,
@@ -63,10 +38,8 @@ func (r *ChallengeReconciler) cleanupChallenge(ctx context.Context, challenge *h
 			return err
 		}
 
-		// Remove the finalizer
-		latestChallenge.Finalizers = removeString(latestChallenge.Finalizers, challengeFinalizer)
+		latestChallenge.Finalizers = removeString(latestChallenge.Finalizers)
 
-		// Try to update
 		if err := r.Update(ctx, &latestChallenge); err != nil {
 			if apierrors.IsConflict(err) {
 				time.Sleep(time.Millisecond * 100 * time.Duration(i+1))
@@ -81,23 +54,23 @@ func (r *ChallengeReconciler) cleanupChallenge(ctx context.Context, challenge *h
 	return fmt.Errorf("failed to remove finalizer after %d attempts", retries)
 }
 
-func containsString(slice []string, s string) bool {
+func containsString(slice []string) bool {
 	for _, item := range slice {
-		if item == s {
+		if item == challengeFinalizer {
 			return true
 		}
 	}
 	return false
 }
 
-func removeString(slice []string, s string) []string {
+func removeString(slice []string) []string {
 	if len(slice) == 0 {
 		return nil
 	}
 
 	var result []string
 	for _, item := range slice {
-		if item != s {
+		if item != challengeFinalizer {
 			result = append(result, item)
 		}
 	}

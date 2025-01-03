@@ -3,230 +3,204 @@ package controller
 import (
 	"context"
 	"testing"
-	"time"
 
 	hexactfproj "github.com/hexactf/challenge-operator/api/v1alpha1"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
-func TestHandleFinalizer(t *testing.T) {
-	scheme := runtime.NewScheme()
-	assert.NoError(t, clientgoscheme.AddToScheme(scheme))
-	assert.NoError(t, hexactfproj.AddToScheme(scheme))
+func TestFinalizerOperations(t *testing.T) {
+	// 스키마 설정
+	s := runtime.NewScheme()
+	_ = scheme.AddToScheme(s)
+	_ = hexactfproj.AddToScheme(s)
 
-	tests := []struct {
-		name       string
-		challenge  *hexactfproj.Challenge
-		isDeleting bool
-	}{
-		{
-			name: "add finalizer to new challenge",
-			challenge: &hexactfproj.Challenge{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "Challenge",
-					APIVersion: hexactfproj.GroupVersion.String(),
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-challenge",
-					Namespace: "default",
-				},
-				Status: hexactfproj.ChallengeStatus{
-					CurrentStatus: hexactfproj.CurrentStatus{
-						State: "Created",
-					},
-				},
-			},
-			isDeleting: false,
-		},
-		{
-			name: "handle deleting challenge with finalizer",
-			challenge: &hexactfproj.Challenge{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "Challenge",
-					APIVersion: hexactfproj.GroupVersion.String(),
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:              "test-challenge",
-					Namespace:         "default",
-					DeletionTimestamp: &metav1.Time{Time: time.Now()},
-					Finalizers:        []string{challengeFinalizer},
-				},
-				Status: hexactfproj.ChallengeStatus{
-					CurrentStatus: hexactfproj.CurrentStatus{
-						State: "Running",
-					},
-				},
-			},
-			isDeleting: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create fake client
-			client := fake.NewClientBuilder().
-				WithScheme(scheme).
-				WithStatusSubresource(&hexactfproj.Challenge{}).
-				Build()
-
-			// Create the initial challenge
-			err := client.Create(context.Background(), tt.challenge.DeepCopy())
-			assert.NoError(t, err)
-
-			reconciler := &ChallengeReconciler{
-				Client: client,
-				Scheme: scheme,
-			}
-
-			// Execute handleFinalizer
-			err = reconciler.handleFinalizer(context.Background(), tt.challenge)
-			assert.NoError(t, err)
-
-			// Get the updated challenge
-			updatedChallenge := &hexactfproj.Challenge{}
-			err = client.Get(context.Background(),
-				types.NamespacedName{
-					Name:      tt.challenge.Name,
-					Namespace: tt.challenge.Namespace,
-				},
-				updatedChallenge)
-			assert.NoError(t, err)
-
-			if tt.isDeleting {
-				// 삭제 중인 경우, finalizer가 제거되어야 함
-				assert.False(t, containsString(updatedChallenge.Finalizers, challengeFinalizer),
-					"Finalizer should be removed for deleting challenge")
-			} else {
-				// 새로운 challenge의 경우, finalizer가 추가되어야 함
-				assert.True(t, containsString(updatedChallenge.Finalizers, challengeFinalizer),
-					"Finalizer should be added for new challenge")
-			}
-		})
-	}
-}
-
-func TestUtilityFunctions(t *testing.T) {
-	t.Run("test containsString", func(t *testing.T) {
-		tests := []struct {
-			slice    []string
-			str      string
-			expected bool
-		}{
-			{
-				slice:    []string{"a", "b", "c"},
-				str:      "b",
-				expected: true,
-			},
-			{
-				slice:    []string{"a", "b", "c"},
-				str:      "d",
-				expected: false,
-			},
-			{
-				slice:    []string{},
-				str:      "a",
-				expected: false,
+	// 테스트용 Challenge 생성 헬퍼 함수
+	createTestChallenge := func(name string, finalizers []string) *hexactfproj.Challenge {
+		return &hexactfproj.Challenge{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       name,
+				Namespace:  "default",
+				Finalizers: finalizers,
 			},
 		}
+	}
 
-		for _, tt := range tests {
-			result := containsString(tt.slice, tt.str)
-			assert.Equal(t, tt.expected, result)
-		}
-	})
-
-	t.Run("test removeString", func(t *testing.T) {
+	t.Run("addFinalizer", func(t *testing.T) {
 		tests := []struct {
-			name     string
-			slice    []string
-			str      string
-			expected []string
+			name      string
+			challenge *hexactfproj.Challenge
+			wantErr   bool
 		}{
 			{
-				name:     "remove existing element",
-				slice:    []string{"a", "b", "c"},
-				str:      "b",
-				expected: []string{"a", "c"},
+				name:      "finalizer 추가 성공",
+				challenge: createTestChallenge("test-1", nil),
+				wantErr:   false,
 			},
 			{
-				name:     "remove non-existing element",
-				slice:    []string{"a", "b", "c"},
-				str:      "d",
-				expected: []string{"a", "b", "c"},
-			},
-			{
-				name:     "remove from empty slice",
-				slice:    []string{},
-				str:      "a",
-				expected: nil, // 기대값을 nil로 변경
+				name:      "이미 finalizer가 있는 경우",
+				challenge: createTestChallenge("test-2", []string{challengeFinalizer}),
+				wantErr:   false,
 			},
 		}
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				result := removeString(tt.slice, tt.str)
-				assert.Equal(t, tt.expected, result)
+				// fake client 생성
+				client := fake.NewClientBuilder().
+					WithScheme(s).
+					WithObjects(tt.challenge).
+					Build()
+
+				r := &ChallengeReconciler{Client: client}
+
+				// addFinalizer 실행
+				_, err := r.addFinalizer(context.Background(), tt.challenge)
+
+				if tt.wantErr {
+					require.Error(t, err)
+					return
+				}
+				require.NoError(t, err)
+
+				// Challenge 다시 가져와서 finalizer 확인
+				updated := &hexactfproj.Challenge{}
+				err = client.Get(context.Background(),
+					types.NamespacedName{
+						Name:      tt.challenge.Name,
+						Namespace: tt.challenge.Namespace,
+					},
+					updated)
+				require.NoError(t, err)
+				assert.Contains(t, updated.Finalizers, challengeFinalizer)
+			})
+		}
+	})
+
+	t.Run("removeFinalizer", func(t *testing.T) {
+		tests := []struct {
+			name      string
+			challenge *hexactfproj.Challenge
+			wantErr   bool
+		}{
+			{
+				name:      "finalizer 제거 성공",
+				challenge: createTestChallenge("test-3", []string{challengeFinalizer}),
+				wantErr:   false,
+			},
+			{
+				name:      "finalizer가 없는 경우",
+				challenge: createTestChallenge("test-4", nil),
+				wantErr:   false,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				// fake client 생성
+				client := fake.NewClientBuilder().
+					WithScheme(s).
+					WithObjects(tt.challenge).
+					Build()
+
+				r := &ChallengeReconciler{Client: client}
+
+				// removeFinalizer 실행
+				err := r.removeFinalizer(context.Background(), tt.challenge)
+
+				if tt.wantErr {
+					require.Error(t, err)
+					return
+				}
+				require.NoError(t, err)
+
+				// Challenge가 존재하는 경우 finalizer 확인
+				updated := &hexactfproj.Challenge{}
+				err = client.Get(context.Background(),
+					types.NamespacedName{
+						Name:      tt.challenge.Name,
+						Namespace: tt.challenge.Namespace,
+					},
+					updated)
+
+				if err == nil {
+					assert.NotContains(t, updated.Finalizers, challengeFinalizer)
+				}
 			})
 		}
 	})
 }
-func TestCleanupChallenge(t *testing.T) {
-	// Setup scheme
-	scheme := runtime.NewScheme()
-	assert.NoError(t, hexactfproj.AddToScheme(scheme))
 
-	tests := []struct {
-		name      string
-		challenge *hexactfproj.Challenge
-		expectErr bool
-	}{
-		{
-			name: "successful cleanup",
-			challenge: &hexactfproj.Challenge{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "test-challenge",
-					Namespace:  "default",
-					Finalizers: []string{challengeFinalizer},
-				},
+func TestFinalizerHelperFunctions(t *testing.T) {
+	t.Run("containsString", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			slice    []string
+			expected bool
+		}{
+			{
+				name:     "빈 슬라이스",
+				slice:    []string{},
+				expected: false,
 			},
-			expectErr: false,
-		},
-		{
-			name: "cleanup nonexistent challenge",
-			challenge: &hexactfproj.Challenge{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "nonexistent-challenge",
-					Namespace: "default",
-				},
+			{
+				name:     "finalizer 포함",
+				slice:    []string{challengeFinalizer, "other-finalizer"},
+				expected: true,
 			},
-			expectErr: false,
-		},
-	}
+			{
+				name:     "finalizer 미포함",
+				slice:    []string{"other-finalizer"},
+				expected: false,
+			},
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client := fake.NewClientBuilder().
-				WithScheme(scheme).
-				WithObjects(tt.challenge).
-				Build()
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				result := containsString(tt.slice)
+				assert.Equal(t, tt.expected, result)
+			})
+		}
+	})
 
-			reconciler := &ChallengeReconciler{
-				Client: client,
-				Scheme: scheme,
-			}
+	t.Run("removeString", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			slice    []string
+			expected []string
+		}{
+			{
+				name:     "빈 슬라이스",
+				slice:    []string{},
+				expected: nil,
+			},
+			{
+				name:     "finalizer만 있는 경우",
+				slice:    []string{challengeFinalizer},
+				expected: nil,
+			},
+			{
+				name:     "여러 finalizer가 있는 경우",
+				slice:    []string{challengeFinalizer, "other-finalizer"},
+				expected: []string{"other-finalizer"},
+			},
+			{
+				name:     "다른 finalizer만 있는 경우",
+				slice:    []string{"other-finalizer"},
+				expected: []string{"other-finalizer"},
+			},
+		}
 
-			err := reconciler.cleanupChallenge(context.Background(), tt.challenge)
-
-			if tt.expectErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				result := removeString(tt.slice)
+				assert.Equal(t, tt.expected, result)
+			})
+		}
+	})
 }

@@ -67,9 +67,14 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	err := r.handleFinalizer(ctx, &challenge)
-	if err != nil {
-		return r.handleError(ctx, &challenge, err)
+	// Check deletion first
+	if !challenge.DeletionTimestamp.IsZero() {
+		return r.handleDeletion(ctx, &challenge)
+	}
+
+	// Add finalizer if not present
+	if !containsString(challenge.Finalizers) {
+		return r.addFinalizer(ctx, &challenge)
 	}
 
 	// init
@@ -98,7 +103,7 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return r.handleError(ctx, &challenge, err)
 		}
 
-		err = r.loadChallengeDefinition(ctx, &challenge)
+		err := r.loadChallengeDefinition(ctx, &challenge)
 		if err != nil {
 			return r.handleError(ctx, &challenge, err)
 		}
@@ -129,6 +134,43 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	}
 	return ctrl.Result{RequeueAfter: requeueInterval}, nil
+}
+
+// handleError 에러 발생 시 로깅과 상태(CurrentStatus)를 업데이트한다.
+func (r *ChallengeReconciler) handleError(ctx context.Context, challenge *hexactfproj.Challenge, err error) (ctrl.Result, error) {
+
+	// 최신 상태 가져오기
+	latest := &hexactfproj.Challenge{}
+	if err := r.Get(ctx, client.ObjectKey{
+		Namespace: challenge.Namespace,
+		Name:      challenge.Name,
+	}, latest); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	// 낙관적 동시성 제어
+	latest.Status.CurrentStatus.SetError(err)
+	patch := client.MergeFrom(latest.DeepCopy())
+	if updateErr := r.Status().Patch(ctx, latest, patch); updateErr != nil {
+		log.Error(updateErr, "failed to update Challenge status")
+		return ctrl.Result{}, updateErr
+	}
+	return ctrl.Result{}, err
+}
+
+func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *hexactfproj.Challenge) (ctrl.Result, error) {
+	log.Info("Processing deletion", "challenge", challenge.Name)
+
+	if containsString(challenge.Finalizers) {
+		if err := r.removeFinalizer(ctx, challenge); err != nil {
+			log.Error(err, "Failed to remove finalizer")
+			return ctrl.Result{RequeueAfter: time.Second * 5}, err
+		}
+
+	}
+
+	log.Info("Successfully completed deletion process")
+	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
