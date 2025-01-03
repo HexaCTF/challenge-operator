@@ -62,47 +62,73 @@ type ChallengeReconciler struct {
 
 func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
-	challenge := &hexactfproj.Challenge{}
-	if err := r.Get(ctx, req.NamespacedName, challenge); err != nil {
+	challenge := hexactfproj.Challenge{}
+	if err := r.Get(ctx, req.NamespacedName, &challenge); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	err := r.handleFinalizer(ctx, challenge)
+	err := r.handleFinalizer(ctx, &challenge)
 	if err != nil {
-		return r.handleError(ctx, challenge, err)
+		return r.handleError(ctx, &challenge, err)
+	}
+
+	// init
+	if challenge.Status.StartedAt == nil {
+		if err := r.Get(ctx, req.NamespacedName, &challenge); err != nil {
+			return r.handleError(ctx, &challenge, err)
+		}
+		now := metav1.Now()
+		challenge.Status.StartedAt = &now
+		challenge.Status.CurrentStatus = *hexactfproj.NewCurrentStatus()
+		if err := r.Status().Update(ctx, &challenge); err != nil {
+			log.Error(err, "Failed to initialize status")
+			return r.handleError(ctx, &challenge, err)
+		}
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	switch {
 	case challenge.Status.CurrentStatus.IsNone():
-		challenge.Status.CurrentStatus.SetCreating()
-		if err := r.Status().Update(ctx, challenge); err != nil {
-			return r.handleError(ctx, challenge, err)
+		if err := r.Get(ctx, req.NamespacedName, &challenge); err != nil {
+			return r.handleError(ctx, &challenge, err)
 		}
 
-		err = r.loadChallengeDefinition(ctx, challenge)
+		challenge.Status.CurrentStatus.SetCreating()
+		if err := r.Status().Update(ctx, &challenge); err != nil {
+			return r.handleError(ctx, &challenge, err)
+		}
+
+		err = r.loadChallengeDefinition(ctx, &challenge)
 		if err != nil {
-			return r.handleError(ctx, challenge, err)
+			return r.handleError(ctx, &challenge, err)
+		}
+
+		if err := r.Get(ctx, req.NamespacedName, &challenge); err != nil {
+			return r.handleError(ctx, &challenge, err)
 		}
 
 		challenge.Status.CurrentStatus.SetRunning()
 		now := metav1.Now()
 		challenge.Status.StartedAt = &now
-		if err := r.Status().Update(ctx, challenge); err != nil {
-			return r.handleError(ctx, challenge, err)
+		if err := r.Status().Update(ctx, &challenge); err != nil {
+			return r.handleError(ctx, &challenge, err)
 		}
 
-		return ctrl.Result{RequeueAfter: requeueInterval}, nil
+		return ctrl.Result{Requeue: true}, nil
 	case challenge.Status.CurrentStatus.IsRunning():
+		if err := r.Get(ctx, req.NamespacedName, &challenge); err != nil {
+			return r.handleError(ctx, &challenge, err)
+		}
+
 		if !challenge.DeletionTimestamp.IsZero() || time.Since(challenge.Status.StartedAt.Time) > challengeDuration {
-			if err := r.Delete(ctx, challenge); err != nil {
-				log.Error(err, "Failed to request deletion")
-				return r.handleError(ctx, challenge, err)
+			if err := r.Delete(ctx, &challenge); err != nil {
+				return r.handleError(ctx, &challenge, err)
 			}
-			return ctrl.Result{RequeueAfter: time.Second * 5}, nil
+			return ctrl.Result{Requeue: true}, nil
 		}
 
 	}
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: requeueInterval}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

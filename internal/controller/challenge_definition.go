@@ -27,13 +27,13 @@ func (r *ChallengeReconciler) loadChallengeDefinition(ctx context.Context, chall
 
 		err = r.loadDeployment(ctx, challenge, component, identifier)
 		if err != nil {
-			log.Error(err, "failed to load Deployment %s", identifier.GetDeploymentPrefix())
+			log.Error(err, "failed to load Deployment")
 			return err
 		}
 
 		err = r.loadService(ctx, challenge, component, identifier)
 		if err != nil {
-			log.Error(err, "failed to load Service %s", identifier.GetServicePrefix())
+			log.Error(err, "failed to load Service")
 			return err
 		}
 	}
@@ -47,7 +47,7 @@ func (r *ChallengeReconciler) getChallengeDefinition(ctx context.Context, challe
 		Namespace: challenge.Namespace,
 		Name:      challenge.Spec.Definition,
 	}, &definition); err != nil {
-		log.Error(err, "failed to get ChallengeDefinition %s", challenge.Spec.Definition)
+		log.Error(err, "failed to get ChallengeDefinition")
 		return nil, fmt.Errorf("failed to load definition %s: %w", challenge.Spec.Definition, err)
 	}
 	return &definition, nil
@@ -64,7 +64,7 @@ func (r *ChallengeReconciler) loadDeployment(ctx context.Context, challenge *hex
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &component.Deployment.Spec.Replicas,
 			Selector: &metav1.LabelSelector{
-				MatchLabels: identifier.GetLabels(),
+				MatchLabels: identifier.GetSelector(),
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
@@ -95,11 +95,11 @@ func (r *ChallengeReconciler) loadDeployment(ctx context.Context, challenge *hex
 
 			err = r.Client.Create(ctx, deploy)
 			if err != nil {
-				log.Error(err, "failed to create Deployment %s", deploy.Name)
+				log.Error(err, "failed to create Deployment")
 				return err
 			}
 		} else {
-			log.Error(err, "failed to get Deployment %s", deploy.Name)
+			log.Error(err, "failed to get Deployment")
 			return err
 		}
 	}
@@ -132,7 +132,7 @@ func (r *ChallengeReconciler) loadService(ctx context.Context, challenge *hexact
 			Labels:    identifier.GetLabels(),
 		},
 		Spec: corev1.ServiceSpec{
-			Selector: identifier.GetLabels(),
+			Selector: identifier.GetSelector(),
 			Ports:    component.Service.Spec.Ports,
 			Type:     component.Service.Spec.Type,
 		},
