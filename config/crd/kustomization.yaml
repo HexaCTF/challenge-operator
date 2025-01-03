@@ -3,7 +3,7 @@
 # It should be run by config/default
 resources:
 - bases/apps.hexactf.io_challenges.yaml
-- bases/apps.hexactf.io_challengetemplates.yaml
+- bases/apps.hexactf.io_challengedefinitions.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

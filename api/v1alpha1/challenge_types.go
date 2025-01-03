@@ -28,16 +28,21 @@ type ChallengeSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 	Namespace string `json:"namespace"`
-	CTemplate string `json:"cTemplate"`
-	// CTemplateValues map[string]string `json:"cTemplateValues"`
+
+	// Definition: ChallengeDefinition 이름
+	Definition string `json:"definition"`
 }
 
 // ChallengeStatus defines the observed state of Challenge.
 type ChallengeStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+
+	// StartedAt: Challenge 시작 시간
 	StartedAt *metav1.Time `json:"startedAt,omitempty"`
-	//Status    string       `json:"status,omitempty"`
+
+	// CurrentStatus: Challenge 현재 상태
+	CurrentStatus CurrentStatus `json:"currentStatus,omitempty"`
 }
 
 // +kubebuilder:object:root=true

@@ -1,0 +1,9 @@
+apiVersion: apps.hexactf.io/v1alpha1
+kind: ChallengeDefinition
+metadata:
+  labels:
+    app.kubernetes.io/name: challenge-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: challengedefinition-sample
+spec:
+  # TODO(user): Add fields here

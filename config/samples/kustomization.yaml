@@ -2,4 +2,5 @@
 resources:
 - apps_v1alpha1_challenge.yaml
 - apps_v1alpha1_challengetemplate.yaml
+- apps_v1alpha1_challengedefinition.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples
