@@ -43,7 +43,9 @@ type ChallengeReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	// TODO(update) : KafkaClient 설정
+	// KafkaClient is the Kafka producer client
+	// 중요한 메세지를 Kafka를 통해 보낸다.
+	KafkaClient *KafkaProducer
 }
 
 // +kubebuilder:rbac:groups=apps.hexactf.io,resources=challenges,verbs=get;list;watch;create;update;patch;delete
@@ -119,6 +121,12 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return r.handleError(ctx, &challenge, err)
 		}
 
+		err = r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Running")
+		if err != nil {
+			log.Error(err, "Failed to send status change message")
+			return r.handleError(ctx, &challenge, err)
+		}
+
 		return ctrl.Result{Requeue: true}, nil
 	case challenge.Status.CurrentStatus.IsRunning():
 		if err := r.Get(ctx, req.NamespacedName, &challenge); err != nil {
@@ -127,6 +135,7 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 		// isOne이 false이면 일정 시간 내에만 작동
 		if !challenge.Status.IsOne && time.Since(challenge.Status.StartedAt.Time) > challengeDuration {
+
 			if err := r.Delete(ctx, &challenge); err != nil {
 				return r.handleError(ctx, &challenge, err)
 			}
@@ -134,12 +143,12 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 
 		if !challenge.DeletionTimestamp.IsZero() {
+
 			if err := r.Delete(ctx, &challenge); err != nil {
 				return r.handleError(ctx, &challenge, err)
 			}
 			return ctrl.Result{Requeue: true}, nil
 		}
-
 	}
 	return ctrl.Result{RequeueAfter: requeueInterval}, nil
 }
@@ -163,6 +172,13 @@ func (r *ChallengeReconciler) handleError(ctx context.Context, challenge *hexact
 		log.Error(updateErr, "failed to update Challenge status")
 		return ctrl.Result{}, updateErr
 	}
+
+	err = r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Error")
+	if err != nil {
+		log.Error(err, "Failed to send status change message")
+		return ctrl.Result{}, err
+	}
+
 	return ctrl.Result{}, err
 }
 
@@ -171,8 +187,15 @@ func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *hex
 
 	if containsString(challenge.Finalizers) {
 		if err := r.removeFinalizer(ctx, challenge); err != nil {
+
 			log.Error(err, "Failed to remove finalizer")
 			return ctrl.Result{RequeueAfter: time.Second * 5}, err
+		}
+
+		err := r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Deleted")
+		if err != nil {
+			log.Error(err, "Failed to send status change message")
+			return ctrl.Result{}, err
 		}
 
 	}
