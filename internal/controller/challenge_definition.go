@@ -22,6 +22,14 @@ func (r *ChallengeReconciler) loadChallengeDefinition(ctx context.Context, chall
 
 	}
 
+	// IsOne 설정
+	challenge.Status.IsOne = definition.Spec.IsOne
+	// Update the status in the cluster
+	if err := r.Status().Update(ctx, challenge); err != nil {
+		log.Error(err, "failed to update Challenge status")
+		return err
+	}
+
 	for _, component := range definition.Spec.Components {
 		identifier := NewChallengeIdentifier(challenge, component)
 
