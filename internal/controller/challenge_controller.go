@@ -125,7 +125,15 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return r.handleError(ctx, &challenge, err)
 		}
 
-		if !challenge.DeletionTimestamp.IsZero() || time.Since(challenge.Status.StartedAt.Time) > challengeDuration {
+		// isOne이 false이면 일정 시간 내에만 작동
+		if !challenge.Status.IsOne && time.Since(challenge.Status.StartedAt.Time) > challengeDuration {
+			if err := r.Delete(ctx, &challenge); err != nil {
+				return r.handleError(ctx, &challenge, err)
+			}
+			return ctrl.Result{Requeue: true}, nil
+		}
+
+		if !challenge.DeletionTimestamp.IsZero() {
 			if err := r.Delete(ctx, &challenge); err != nil {
 				return r.handleError(ctx, &challenge, err)
 			}

@@ -64,6 +64,9 @@ spec:
                 required:
                 - errorMsg
                 type: object
+              isOne:
+                description: isOne는 영속성을 나타낸다.
+                type: boolean
               startedAt:
                 description: 'StartedAt: Challenge 시작 시간'
                 format: date-time

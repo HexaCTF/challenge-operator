@@ -43,6 +43,10 @@ type ChallengeStatus struct {
 
 	// CurrentStatus: Challenge 현재 상태
 	CurrentStatus CurrentStatus `json:"currentStatus,omitempty"`
+
+	// isOne는 영속성을 나타낸다.
+	// +optional
+	IsOne bool `json:"isOne,omitempty"`
 }
 
 // +kubebuilder:object:root=true
