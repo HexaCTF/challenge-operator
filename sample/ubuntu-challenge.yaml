@@ -4,8 +4,8 @@ metadata:
   name: ubuntu-instance-1
   namespace: default
   labels:
-    hexactf.io/challengeId: "1"
-    hexactf.io/user: "test"
+    apps.hexactf.io/challengeId: "1"
+    apps.hexactf.io/user: "test"
 spec:
   # Challenge가 생성될 namespace
   namespace: default

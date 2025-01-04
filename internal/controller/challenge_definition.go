@@ -45,6 +45,14 @@ func (r *ChallengeReconciler) loadChallengeDefinition(ctx context.Context, chall
 			return err
 		}
 	}
+
+	// 메세지 전송
+	err = r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Creating")
+	if err != nil {
+		log.Error(err, "Failed to send status change message")
+		return err
+	}
+
 	return nil
 }
 

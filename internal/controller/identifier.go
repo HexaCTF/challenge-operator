@@ -16,9 +16,9 @@ type ChallengeIdentifier struct {
 func NewChallengeIdentifier(challenge *hexactfproj.Challenge, component hexactfproj.Component) *ChallengeIdentifier {
 	// prefix 생성 (리소스 이름에 사용)
 	prefix := fmt.Sprintf("chall-%s-%s-%s",
-		challenge.Labels["hexactf.io/challengeId"],
+		challenge.Labels["apps.hexactf.io/challengeId"],
 		component.Name,
-		challenge.Labels["hexactf.io/user"])
+		challenge.Labels["apps.hexactf.io/user"])
 
 	// 단일 레이블 맵 사용
 	labels := map[string]string{

@@ -14,8 +14,8 @@ func TestNewChallengeIdentifier(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "test-challenge",
 			Labels: map[string]string{
-				"hexactf.io/challengeId": "test-id",
-				"hexactf.io/user":        "test-user",
+				"apps.hexactf.io/challengeId": "test-id",
+				"apps.hexactf.io/user":        "test-user",
 			},
 		},
 	}
@@ -79,7 +79,7 @@ func TestNewChallengeIdentifierEdgeCases(t *testing.T) {
 			component: hexactfproj.Component{
 				Name: "ubuntu",
 			},
-			wantPrefix: "chall---ubuntu-",
+			wantPrefix: "chall--ubuntu-",
 		},
 		{
 			name: "긴 이름",
@@ -87,8 +87,8 @@ func TestNewChallengeIdentifierEdgeCases(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-challenge",
 					Labels: map[string]string{
-						"hexactf.io/challengeId": "very-long-challenge-id",
-						"hexactf.io/user":        "very-long-user-name",
+						"apps.hexactf.io/challengeId": "very-long-challenge-id",
+						"apps.hexactf.io/user":        "very-long-user-name",
 					},
 				},
 			},
@@ -103,8 +103,8 @@ func TestNewChallengeIdentifierEdgeCases(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-challenge",
 					Labels: map[string]string{
-						"hexactf.io/challengeId": "test@id",
-						"hexactf.io/user":        "user#1",
+						"apps.hexactf.io/challengeId": "test@id",
+						"apps.hexactf.io/user":        "user#1",
 					},
 				},
 			},
