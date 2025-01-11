@@ -47,6 +47,10 @@ type ChallengeStatus struct {
 	// isOne는 영속성을 나타낸다.
 	// +optional
 	IsOne bool `json:"isOne,omitempty"`
+
+	// Endpoint: Challenge의 Endpoint
+	// 외부에 노출될 포트 번호가 저장됩니다.
+	Endpoint int `json:"endpoint,omitempty"`
 }
 
 // +kubebuilder:object:root=true

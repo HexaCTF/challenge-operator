@@ -1,0 +1,151 @@
+apiVersion: apps.hexactf.io/v1alpha1
+kind: ChallengeDefinition
+metadata:
+  name: web-basic
+  namespace: default
+spec:
+  isOne: false
+  components:
+    - name: nginx
+      deployment:
+        spec:
+          replicas: 1
+          template:
+            spec:
+              containers:
+                - name: webapp
+                  image: python:3.9-slim
+                  command: ["bash"]
+                  args:
+                    - -c
+                    - |
+                      apt-get update && apt-get install -y nginx
+                      
+                      # Create Flask app
+                      cat > /app.py << 'EOF'
+                      from flask import Flask, jsonify
+                      app = Flask(__name__)
+                      
+                      @app.route('/api/hello')
+                      def hello():
+                          return jsonify({"message": "Hello from web app!"})
+                      
+                      if __name__ == '__main__':
+                          app.run(host='0.0.0.0', port=5000)
+                      EOF
+                      
+                      # Install Python packages
+                      pip install flask gunicorn
+                      
+                      # Configure Nginx
+                      cat > /etc/nginx/sites-available/default << 'EOF'
+                      server {
+                          listen 80 default_server;
+                          root /var/www/html;
+                          
+                          location / {
+                              try_files $uri $uri/ =404;
+                          }
+                          
+                          location /api/ {
+                              proxy_pass http://127.0.0.1:5000;
+                              proxy_set_header Host $host;
+                              proxy_set_header X-Real-IP $remote_addr;
+                          }
+                      }
+                      EOF
+                      
+                      # Create index.html
+                      cat > /var/www/html/index.html << 'EOF'
+                      <!DOCTYPE html>
+                      <html>
+                      <head>
+                          <title>Web Server Check</title>
+                          <style>
+                              body { 
+                                  font-family: Arial, sans-serif; 
+                                  margin: 40px; 
+                                  max-width: 800px;
+                                  margin: 0 auto;
+                                  padding: 20px;
+                              }
+                              .button { 
+                                  background: #4CAF50; 
+                                  color: white;
+                                  padding: 10px 20px;
+                                  border: none;
+                                  cursor: pointer;
+                                  border-radius: 4px;
+                              }
+                              #result { 
+                                  margin-top: 20px; 
+                                  padding: 10px;
+                              }
+                              .success {
+                                  background-color: #dff0d8;
+                                  color: #3c763d;
+                                  border: 1px solid #d6e9c6;
+                                  padding: 10px;
+                                  border-radius: 4px;
+                              }
+                              .error {
+                                  background-color: #f2dede;
+                                  color: #a94442;
+                                  border: 1px solid #ebccd1;
+                                  padding: 10px;
+                                  border-radius: 4px;
+                              }
+                          </style>
+                      </head>
+                      <body>
+                          <h1>Web Server Test</h1>
+                          <button class="button" onclick="checkServer()">Check Server</button>
+                          <div id="result"></div>
+                          <script>
+                              function checkServer() {
+                                  const result = document.getElementById('result');
+                                  result.className = '';
+                                  result.textContent = 'Checking...';
+                                  
+                                  fetch('/api/hello')
+                                      .then(r => {
+                                          if (!r.ok) {
+                                              throw new Error('Server response was not ok');
+                                          }
+                                          return r.json();
+                                      })
+                                      .then(data => {
+                                          result.textContent = 'Server Response: ' + data.message;
+                                          result.className = 'success';
+                                      })
+                                      .catch(err => {
+                                          result.textContent = 'Error: ' + err.message;
+                                          result.className = 'error';
+                                          console.error('Error:', err);
+                                      });
+                              }
+                          </script>
+                      </body>
+                      </html>
+                      EOF
+                      
+                      # Start services
+                      service nginx start
+                      gunicorn --bind 127.0.0.1:5000 app:app
+                  ports:
+                    - containerPort: 80
+                  resources:
+                    limits:
+                      cpu: "500m"
+                      memory: "512Mi"
+                    requests:
+                      cpu: "200m"
+                      memory: "256Mi"
+      service:
+        spec:
+          ports:
+            - name: http
+              protocol: TCP
+              port: 80
+              targetPort: 80
+          type: NodePort
