@@ -1,7 +1,7 @@
 apiVersion: apps.hexactf.io/v1alpha1
 kind: Challenge
 metadata:
-  name: web-instance-1
+  name: web-sample-1
   namespace: default
   labels:
     apps.hexactf.io/challengeId: "1"

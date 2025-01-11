@@ -1,3 +1,4 @@
+# ChallengeDefinition
 apiVersion: apps.hexactf.io/v1alpha1
 kind: ChallengeDefinition
 metadata:
@@ -6,146 +7,160 @@ metadata:
 spec:
   isOne: false
   components:
-    - name: nginx
+    - name: web
       deployment:
         spec:
           replicas: 1
           template:
             spec:
               containers:
-                - name: webapp
-                  image: python:3.9-slim
-                  command: ["bash"]
+                - name: nginx
+                  image: nginx:1.25
+                  ports:
+                    - containerPort: 80
+                  command: ["/bin/bash", "-c"]
                   args:
-                    - -c
                     - |
-                      apt-get update && apt-get install -y nginx
-                      
-                      # Create Flask app
-                      cat > /app.py << 'EOF'
-                      from flask import Flask, jsonify
-                      app = Flask(__name__)
-                      
-                      @app.route('/api/hello')
-                      def hello():
-                          return jsonify({"message": "Hello from web app!"})
-                      
-                      if __name__ == '__main__':
-                          app.run(host='0.0.0.0', port=5000)
-                      EOF
-                      
-                      # Install Python packages
-                      pip install flask gunicorn
-                      
-                      # Configure Nginx
-                      cat > /etc/nginx/sites-available/default << 'EOF'
+                      cat > /etc/nginx/conf.d/default.conf << 'EOF'
                       server {
-                          listen 80 default_server;
-                          root /var/www/html;
+                          listen 80;
+                          server_name _;
                           
                           location / {
-                              try_files $uri $uri/ =404;
+                              root /usr/share/nginx/html;
+                              index index.html;
                           }
                           
                           location /api/ {
-                              proxy_pass http://127.0.0.1:5000;
+                              proxy_pass http://localhost:5000;
                               proxy_set_header Host $host;
                               proxy_set_header X-Real-IP $remote_addr;
                           }
                       }
                       EOF
-                      
-                      # Create index.html
-                      cat > /var/www/html/index.html << 'EOF'
+
+                      cat > /usr/share/nginx/html/index.html << 'EOF'
                       <!DOCTYPE html>
                       <html>
                       <head>
-                          <title>Web Server Check</title>
+                          <title>Sample Challenge</title>
                           <style>
-                              body { 
-                                  font-family: Arial, sans-serif; 
-                                  margin: 40px; 
+                              body {
+                                  font-family: Arial, sans-serif;
                                   max-width: 800px;
                                   margin: 0 auto;
                                   padding: 20px;
+                                  text-align: center;
                               }
-                              .button { 
-                                  background: #4CAF50; 
+                              .button {
+                                  background: #4CAF50;
                                   color: white;
-                                  padding: 10px 20px;
                                   border: none;
+                                  padding: 10px 20px;
+                                  border-radius: 5px;
                                   cursor: pointer;
-                                  border-radius: 4px;
+                                  font-size: 16px;
+                                  margin: 10px;
                               }
-                              #result { 
-                                  margin-top: 20px; 
-                                  padding: 10px;
+                              .button:hover {
+                                  background: #45a049;
+                              }
+                              #response {
+                                  margin-top: 20px;
+                                  padding: 15px;
+                                  border-radius: 5px;
+                                  display: none;
                               }
                               .success {
-                                  background-color: #dff0d8;
-                                  color: #3c763d;
+                                  background: #dff0d8;
                                   border: 1px solid #d6e9c6;
-                                  padding: 10px;
-                                  border-radius: 4px;
+                                  color: #3c763d;
+                                  display: block !important;
                               }
                               .error {
-                                  background-color: #f2dede;
-                                  color: #a94442;
+                                  background: #f2dede;
                                   border: 1px solid #ebccd1;
-                                  padding: 10px;
-                                  border-radius: 4px;
+                                  color: #a94442;
+                                  display: block !important;
                               }
                           </style>
                       </head>
                       <body>
-                          <h1>Web Server Test</h1>
-                          <button class="button" onclick="checkServer()">Check Server</button>
-                          <div id="result"></div>
+                          <h1>Sample Challenge</h1>
+                          <p>Click the button to send request to Python server</p>
+                          <button class="button" onclick="sendRequest()">Send Request</button>
+                          <div id="response"></div>
+
                           <script>
-                              function checkServer() {
-                                  const result = document.getElementById('result');
-                                  result.className = '';
-                                  result.textContent = 'Checking...';
-                                  
-                                  fetch('/api/hello')
-                                      .then(r => {
-                                          if (!r.ok) {
-                                              throw new Error('Server response was not ok');
-                                          }
-                                          return r.json();
-                                      })
+                              function sendRequest() {
+                                  const responseDiv = document.getElementById('response');
+                                  responseDiv.style.display = 'block';
+                                  responseDiv.textContent = 'Sending request...';
+                                  responseDiv.className = '';
+
+                                  fetch('/api/check')
+                                      .then(response => response.json())
                                       .then(data => {
-                                          result.textContent = 'Server Response: ' + data.message;
-                                          result.className = 'success';
+                                          responseDiv.textContent = 'Server Response: ' + data.message;
+                                          responseDiv.className = 'success';
                                       })
-                                      .catch(err => {
-                                          result.textContent = 'Error: ' + err.message;
-                                          result.className = 'error';
-                                          console.error('Error:', err);
+                                      .catch(error => {
+                                          responseDiv.textContent = 'Error: ' + error.message;
+                                          responseDiv.className = 'error';
                                       });
                               }
                           </script>
                       </body>
                       </html>
                       EOF
-                      
-                      # Start services
-                      service nginx start
-                      gunicorn --bind 127.0.0.1:5000 app:app
-                  ports:
-                    - containerPort: 80
+
+                      nginx -g 'daemon off;'
                   resources:
                     limits:
-                      cpu: "500m"
-                      memory: "512Mi"
-                    requests:
                       cpu: "200m"
                       memory: "256Mi"
+                    requests:
+                      cpu: "100m"
+                      memory: "128Mi"
+
+                - name: python
+                  image: python:3.9-slim
+                  ports:
+                    - containerPort: 5000
+                  command: ["/bin/bash", "-c"]
+                  args:
+                    - |
+                      pip install flask gunicorn
+                      
+                      cat > app.py << 'EOF'
+                      from flask import Flask, jsonify
+                      
+                      app = Flask(__name__)
+                      
+                      @app.route('/api/check')
+                      def check():
+                          return jsonify({
+                              "message": "Hello from Python backend!",
+                              "status": "success"
+                          })
+                      
+                      if __name__ == '__main__':
+                          app.run(host='0.0.0.0', port=5000)
+                      EOF
+                      
+                      gunicorn --bind 0.0.0.0:5000 app:app
+                  resources:
+                    limits:
+                      cpu: "300m"
+                      memory: "256Mi"
+                    requests:
+                      cpu: "100m"
+                      memory: "128Mi"
       service:
         spec:
           ports:
             - name: http
-              protocol: TCP
               port: 80
               targetPort: 80
+              protocol: TCP
           type: NodePort
