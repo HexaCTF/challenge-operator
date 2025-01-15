@@ -64,6 +64,14 @@ spec:
                 required:
                 - errorMsg
                 type: object
+              endpoint:
+                description: |-
+                  Endpoint: Challenge의 Endpoint
+                  외부에 노출될 포트 번호가 저장됩니다.
+                type: integer
+              isOne:
+                description: isOne는 영속성을 나타낸다.
+                type: boolean
               startedAt:
                 description: 'StartedAt: Challenge 시작 시간'
                 format: date-time
