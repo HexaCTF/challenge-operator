@@ -31,7 +31,7 @@ import (
 )
 
 const (
-	challengeDuration = 5 * time.Minute
+	challengeDuration = 1 * time.Minute
 	requeueInterval   = 30 * time.Second
 	warningThreshold  = 2 * time.Minute // Time to start warning about impending timeout
 )
@@ -79,9 +79,9 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	// Add finalizer if not present
-	if !containsString(challenge.Finalizers) {
-		return r.addFinalizer(ctx, &challenge)
-	}
+	// if !containsString(challenge.Finalizers) {
+	// 	return r.addFinalizer(ctx, &challenge)
+	// }
 
 	// init
 	if challenge.Status.StartedAt == nil {
@@ -188,21 +188,27 @@ func (r *ChallengeReconciler) handleError(ctx context.Context, challenge *hexact
 
 func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *hexactfproj.Challenge) (ctrl.Result, error) {
 	log.Info("Processing deletion", "challenge", challenge.Name)
-
-	if containsString(challenge.Finalizers) {
-		if err := r.removeFinalizer(ctx, challenge); err != nil {
-
-			log.Error(err, "Failed to remove finalizer")
-			return ctrl.Result{RequeueAfter: time.Second * 5}, err
-		}
-
+	if err := r.Delete(ctx, challenge); err != nil {
 		err := r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Deleted")
 		if err != nil {
 			log.Error(err, "Failed to send status change message")
 			return ctrl.Result{}, err
 		}
-
 	}
+	// if containsString(challenge.Finalizers) {
+	// 	if err := r.removeFinalizer(ctx, challenge); err != nil {
+
+	// 		log.Error(err, "Failed to remove finalizer")
+	// 		return ctrl.Result{RequeueAfter: time.Second * 5}, err
+	// 	}
+
+	// 	err := r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Deleted")
+	// 	if err != nil {
+	// 		log.Error(err, "Failed to send status change message")
+	// 		return ctrl.Result{}, err
+	// 	}
+
+	// }
 
 	log.Info("Successfully completed deletion process")
 	return ctrl.Result{}, nil
