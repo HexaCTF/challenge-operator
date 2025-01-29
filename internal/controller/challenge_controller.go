@@ -79,9 +79,9 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	// Add finalizer if not present
-	// if !containsString(challenge.Finalizers) {
-	// 	return r.addFinalizer(ctx, &challenge)
-	// }
+	if !containsString(challenge.Finalizers) {
+		return r.addFinalizer(ctx, &challenge)
+	}
 
 	// init
 	if challenge.Status.StartedAt == nil {
@@ -95,7 +95,6 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			log.Error(err, "Failed to initialize status")
 			return r.handleError(ctx, &challenge, err)
 		}
-		return ctrl.Result{Requeue: true}, nil
 	}
 
 	switch {
@@ -125,11 +124,11 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return r.handleError(ctx, &challenge, err)
 		}
 
-		err = r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Running")
-		if err != nil {
-			log.Error(err, "Failed to send status change message")
-			return r.handleError(ctx, &challenge, err)
-		}
+		// err = r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Running")
+		// if err != nil {
+		// 	log.Error(err, "Failed to send status change message")
+		// 	return r.handleError(ctx, &challenge, err)
+		// }
 
 		return ctrl.Result{Requeue: true}, nil
 	case challenge.Status.CurrentStatus.IsRunning():
@@ -140,18 +139,18 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// isOne이 false이면 일정 시간 내에만 작동
 		if !challenge.Status.IsOne && time.Since(challenge.Status.StartedAt.Time) > challengeDuration {
 
-			if err := r.Delete(ctx, &challenge); err != nil {
-				return r.handleError(ctx, &challenge, err)
-			}
-			return ctrl.Result{Requeue: true}, nil
+			return r.handleDeletion(ctx, &challenge)
 		}
 
 		if !challenge.DeletionTimestamp.IsZero() {
+			return r.handleDeletion(ctx, &challenge)
+		}
 
-			if err := r.Delete(ctx, &challenge); err != nil {
-				return r.handleError(ctx, &challenge, err)
-			}
-			return ctrl.Result{Requeue: true}, nil
+		// Running 메세지 전송
+		err := r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Running")
+		if err != nil {
+			log.Error(err, "Failed to send status change message")
+			return r.handleError(ctx, &challenge, err)
 		}
 	}
 	return ctrl.Result{RequeueAfter: requeueInterval}, nil
@@ -188,29 +187,21 @@ func (r *ChallengeReconciler) handleError(ctx context.Context, challenge *hexact
 
 func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *hexactfproj.Challenge) (ctrl.Result, error) {
 	log.Info("Processing deletion", "challenge", challenge.Name)
-	if err := r.Delete(ctx, challenge); err != nil {
-		r.handleError(ctx, challenge, err)
-		return ctrl.Result{}, err
+
+	if containsString(challenge.Finalizers) {
+		if err := r.removeFinalizer(ctx, challenge); err != nil {
+
+			log.Error(err, "Failed to remove finalizer")
+			return ctrl.Result{RequeueAfter: time.Second * 5}, err
+		}
+
+		err := r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Deleted")
+		if err != nil {
+			log.Error(err, "Failed to send status change message")
+			return ctrl.Result{}, err
+		}
+
 	}
-	err := r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Deleted")
-	if err != nil {
-		r.handleError(ctx, challenge, err)
-		return ctrl.Result{}, err
-	}
-	// if containsString(challenge.Finalizers) {
-	// 	if err := r.removeFinalizer(ctx, challenge); err != nil {
-
-	// 		log.Error(err, "Failed to remove finalizer")
-	// 		return ctrl.Result{RequeueAfter: time.Second * 5}, err
-	// 	}
-
-	// 	err := r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Deleted")
-	// 	if err != nil {
-	// 		log.Error(err, "Failed to send status change message")
-	// 		return ctrl.Result{}, err
-	// 	}
-
-	// }
 
 	log.Info("Successfully completed deletion process")
 	return ctrl.Result{}, nil
