@@ -189,11 +189,13 @@ func (r *ChallengeReconciler) handleError(ctx context.Context, challenge *hexact
 func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *hexactfproj.Challenge) (ctrl.Result, error) {
 	log.Info("Processing deletion", "challenge", challenge.Name)
 	if err := r.Delete(ctx, challenge); err != nil {
-		err := r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Deleted")
-		if err != nil {
-			log.Error(err, "Failed to send status change message")
-			return ctrl.Result{}, err
-		}
+		r.handleError(ctx, challenge, err)
+		return ctrl.Result{}, err
+	}
+	err := r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Deleted")
+	if err != nil {
+		r.handleError(ctx, challenge, err)
+		return ctrl.Result{}, err
 	}
 	// if containsString(challenge.Finalizers) {
 	// 	if err := r.removeFinalizer(ctx, challenge); err != nil {
