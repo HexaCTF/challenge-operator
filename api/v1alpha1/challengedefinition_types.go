@@ -63,7 +63,9 @@ type CustomPodTemplateSpec struct {
 }
 
 type CustomPodSpec struct {
-	Containers []corev1.Container `json:"containers,omitempty"`
+	// +optional
+	NodeSelector map[string]string  `json:"nodeSelector,omitempty"`
+	Containers   []corev1.Container `json:"containers,omitempty"`
 }
 
 // ChallengeDefinitionStatus defines the observed state of ChallengeDefinition.
