@@ -1,100 +1,52 @@
 # challenge-operator
-// TODO(user): Add simple overview of use/purpose
+
+CTF 대회에서 사용자마다 시스템 문제처럼 고유한 환경을 가지고 있어야 하는 문제 유형이 있습니다. 이는 일반 컨테이너로 구현하기에는 한계가 있습니다.
+이러한 문제를 쿠버네티스 오퍼레이터 패턴을 통해 해결하고자 합니다.
+전반적으로 AWS CloudFormation Template 컨셉을 차용했습니다. Template으로 리소스를 생성하는 것처럼 ChallengeDefinition을 정의하여 Challenge를 생성할 수 있게 설계했습니다.
 
 ## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
 
-## Getting Started
+문제 출제자는 `ChallengeDefinition`이라는 쿠버네티스 커스텀 리소스를 정의하여 문제를 등록할 수 있습니다.
 
-### Prerequisites
-- go version v1.22.0+
-- docker version 17.03+.
-- kubectl version v1.11.3+.
-- Access to a Kubernetes v1.11.3+ cluster.
+![ChallengeDefinition & Challenge](./assets/image.png)
 
-### To Deploy on the cluster
-**Build and push your image to the location specified by `IMG`:**
+해킹 대회 참여자는 기타 대회 플랫폼(ex. DreamHack)처럼 IP과 포트 번호를 제공받습니다. 참여자는 해당 정보를 가지고 문제를 풀 수 있습니다.
 
-```sh
-make docker-build docker-push IMG=<some-registry>/challenge-operator:tag
-```
+![역할에 따른 구성도](./assets/image1.png)
 
-**NOTE:** This image ought to be published in the personal registry you specified.
-And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don’t work.
+## ChallengeDefinition
 
-**Install the CRDs into the cluster:**
+### 구성
 
-```sh
-make install
-```
+문제를 등록하기 위해서는 ChallengeDefinition이라는 쿠버네티스 커스텀 리소스(CR)를 정의해야 합니다.
 
-**Deploy the Manager to the cluster with the image specified by `IMG`:**
+> [!NOTE]
+> 추후 별도의 문서로 정리될 예정입니다.
 
-```sh
-make deploy IMG=<some-registry>/challenge-operator:tag
-```
+##### Spec
 
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
-privileges or be logged in as admin.
+|    Key     | Type              | Default | Description                 |
+| :--------: | ----------------- | ------- | --------------------------- |
+|   isOne    | nullable, boolean | False   | 하나만 생성할 경우에만 True |
+| components | []Component       |         | 쿠버네티스 리소스           |
 
-**Create instances of your solution**
-You can apply the samples (examples) from the config/sample:
+###### Component
 
-```sh
-kubectl apply -k config/samples/
-```
+deployment와 service는 쿠버네티스 정의서대로 작성하시면 됩니다.
 
->**NOTE**: Ensure that the samples has default values to test it out.
+|    Key     | Type   | Description       |
+| :--------: | ------ | ----------------- |
+|    name    | string | 컴포넌트 이름     |
+| deployment | \*     | Deployment 정의서 |
+|  service   | \*     | Service 정의서    |
 
-### To Uninstall
-**Delete the instances (CRs) from the cluster:**
+### 예시
 
-```sh
-kubectl delete -k config/samples/
-```
+[web(nginx + flask) ChallengeDefinition](./sample/definition/web-basic.yaml) 샘플을 확인해주시길 바랍니다.
 
-**Delete the APIs(CRDs) from the cluster:**
+## 블로그
 
-```sh
-make uninstall
-```
-
-**UnDeploy the controller from the cluster:**
-
-```sh
-make undeploy
-```
-
-## Project Distribution
-
-Following are the steps to build the installer and distribute this project to users.
-
-1. Build the installer for the image built and published in the registry:
-
-```sh
-make build-installer IMG=<some-registry>/challenge-operator:tag
-```
-
-NOTE: The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without
-its dependencies.
-
-2. Using the installer
-
-Users can just run kubectl apply -f <URL for YAML BUNDLE> to install the project, i.e.:
-
-```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/challenge-operator/<tag or branch>/dist/install.yaml
-```
-
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
-
-**NOTE:** Run `make help` for more information on all potential `make` targets
-
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
+정확한 제작 과정은 [블로그](https://medium.com/s0okju-tech)에 지속적으로 업로드하고 있습니다.
 
 ## License
 
@@ -111,4 +63,3 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-
