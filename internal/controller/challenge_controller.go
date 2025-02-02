@@ -31,7 +31,7 @@ import (
 )
 
 const (
-	challengeDuration = 2 * time.Minute
+	challengeDuration = 5 * time.Minute
 	requeueInterval   = 30 * time.Second
 	warningThreshold  = 2 * time.Minute // Time to start warning about impending timeout
 )
@@ -51,6 +51,10 @@ type ChallengeReconciler struct {
 // +kubebuilder:rbac:groups=apps.hexactf.io,resources=challenges,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps.hexactf.io,resources=challenges/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=apps.hexactf.io,resources=challenges/finalizers,verbs=update
+//+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=core,resources=services/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=apps,resources=deployments/status,verbs=get;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -91,7 +95,6 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			log.Error(err, "Failed to initialize status")
 			return r.handleError(ctx, &challenge, err)
 		}
-		return ctrl.Result{Requeue: true}, nil
 	}
 
 	switch {
@@ -121,11 +124,11 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return r.handleError(ctx, &challenge, err)
 		}
 
-		err = r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Running")
-		if err != nil {
-			log.Error(err, "Failed to send status change message")
-			return r.handleError(ctx, &challenge, err)
-		}
+		// err = r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Running")
+		// if err != nil {
+		// 	log.Error(err, "Failed to send status change message")
+		// 	return r.handleError(ctx, &challenge, err)
+		// }
 
 		return ctrl.Result{Requeue: true}, nil
 	case challenge.Status.CurrentStatus.IsRunning():
@@ -136,18 +139,18 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// isOne이 false이면 일정 시간 내에만 작동
 		if !challenge.Status.IsOne && time.Since(challenge.Status.StartedAt.Time) > challengeDuration {
 
-			if err := r.Delete(ctx, &challenge); err != nil {
-				return r.handleError(ctx, &challenge, err)
-			}
-			return ctrl.Result{Requeue: true}, nil
+			return r.handleDeletion(ctx, &challenge)
 		}
 
 		if !challenge.DeletionTimestamp.IsZero() {
+			return r.handleDeletion(ctx, &challenge)
+		}
 
-			if err := r.Delete(ctx, &challenge); err != nil {
-				return r.handleError(ctx, &challenge, err)
-			}
-			return ctrl.Result{Requeue: true}, nil
+		// Running 메세지 전송
+		err := r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Running")
+		if err != nil {
+			log.Error(err, "Failed to send status change message")
+			return r.handleError(ctx, &challenge, err)
 		}
 	}
 	return ctrl.Result{RequeueAfter: requeueInterval}, nil

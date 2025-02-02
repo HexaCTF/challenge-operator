@@ -1546,6 +1546,10 @@ spec:
                                         - name
                                         type: object
                                       type: array
+                                    nodeSelector:
+                                      additionalProperties:
+                                        type: string
+                                      type: object
                                   type: object
                               type: object
                           type: object

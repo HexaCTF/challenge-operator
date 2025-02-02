@@ -87,7 +87,8 @@ func (r *ChallengeReconciler) loadDeployment(ctx context.Context, challenge *hex
 					Labels: identifier.GetLabels(),
 				},
 				Spec: corev1.PodSpec{
-					Containers: component.Deployment.Spec.Template.Spec.Containers,
+					NodeSelector: component.Deployment.Spec.Template.Spec.NodeSelector,
+					Containers:   component.Deployment.Spec.Template.Spec.Containers,
 				},
 			},
 		},
