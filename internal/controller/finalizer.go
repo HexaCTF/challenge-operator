@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	challengeFinalizer = "challenge.hexactf.dev/finalizer"
+	challengeFinalizer = "challenge.hexactf.io/finalizer"
 )
 
 func (r *ChallengeReconciler) addFinalizer(ctx context.Context, challenge *hexactfproj.Challenge) (ctrl.Result, error) {
