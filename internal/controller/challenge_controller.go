@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logr "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -189,24 +190,59 @@ func (r *ChallengeReconciler) handleError(ctx context.Context, challenge *hexact
 func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *hexactfproj.Challenge) (ctrl.Result, error) {
 	log.Info("Processing deletion", "challenge", challenge.Name)
 
-	if containsString(challenge.Finalizers) {
-		if err := r.removeFinalizer(ctx, challenge); err != nil {
+	// 1. Finalizer가 남아있는지 확인
+	if controllerutil.ContainsFinalizer(challenge, "challenge.hexactf.io/finalizer") {
+		// 2. 리소스 삭제 전 해야 할 Clean-up 로직이 있으면 여기서 처리
 
+		// 3. 파이널라이저 제거
+		controllerutil.RemoveFinalizer(challenge, "challenge.hexactf.io/finalizer")
+
+		// 4. 메타데이터 업데이트
+		if err := r.Update(ctx, challenge); err != nil {
 			log.Error(err, "Failed to remove finalizer")
+			// 재시도 위해 Requeue
 			return ctrl.Result{RequeueAfter: time.Second * 5}, err
 		}
 
-		err := r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Deleted")
+		// 5. 필요하다면 Deleted 이벤트 전송
+		err := r.KafkaClient.SendStatusChange(
+			challenge.Labels["apps.hexactf.io/user"],
+			challenge.Labels["apps.hexactf.io/challengeId"],
+			"Deleted",
+		)
 		if err != nil {
 			log.Error(err, "Failed to send status change message")
+			// 여기서도 에러 시 재시도
 			return ctrl.Result{}, err
 		}
-
 	}
 
 	log.Info("Successfully completed deletion process")
+	// 이 시점에서 finalizers가 비어 있으므로, K8s가 오브젝트를 실제 삭제함
 	return ctrl.Result{}, nil
 }
+
+// func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *hexactfproj.Challenge) (ctrl.Result, error) {
+// 	log.Info("Processing deletion", "challenge", challenge.Name)
+
+// 	if containsString(challenge.Finalizers) {
+// 		if err := r.removeFinalizer(ctx, challenge); err != nil {
+
+// 			log.Error(err, "Failed to remove finalizer")
+// 			return ctrl.Result{RequeueAfter: time.Second * 5}, err
+// 		}
+
+// 		err := r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Deleted")
+// 		if err != nil {
+// 			log.Error(err, "Failed to send status change message")
+// 			return ctrl.Result{}, err
+// 		}
+
+// 	}
+
+// 	log.Info("Successfully completed deletion process")
+// 	return ctrl.Result{}, nil
+// }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ChallengeReconciler) SetupWithManager(mgr ctrl.Manager) error {
