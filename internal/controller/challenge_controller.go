@@ -32,7 +32,7 @@ import (
 )
 
 const (
-	challengeDuration = 5 * time.Minute
+	challengeDuration = 1 * time.Minute
 	requeueInterval   = 30 * time.Second
 	warningThreshold  = 2 * time.Minute // Time to start warning about impending timeout
 )
@@ -67,24 +67,145 @@ type ChallengeReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.1/pkg/reconcile
 
+// func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+
+// 	challenge := hexactfproj.Challenge{}
+// 	if err := r.Get(ctx, req.NamespacedName, &challenge); err != nil {
+// 		return ctrl.Result{}, client.IgnoreNotFound(err)
+// 	}
+
+// 	// Check deletion first
+// 	if !challenge.DeletionTimestamp.IsZero() {
+// 		return r.handleDeletion(ctx, &challenge)
+// 	}
+
+// 	// Add finalizer if not present
+// 	if !containsString(challenge.Finalizers) {
+// 		return r.addFinalizer(ctx, &challenge)
+// 	}
+
+// 	// init
+// 	if challenge.Status.StartedAt == nil {
+// 		if err := r.Get(ctx, req.NamespacedName, &challenge); err != nil {
+// 			return r.handleError(ctx, &challenge, err)
+// 		}
+// 		now := metav1.Now()
+// 		challenge.Status.StartedAt = &now
+// 		challenge.Status.CurrentStatus = *hexactfproj.NewCurrentStatus()
+// 		if err := r.Status().Update(ctx, &challenge); err != nil {
+// 			log.Error(err, "Failed to initialize status")
+// 			return r.handleError(ctx, &challenge, err)
+// 		}
+// 	}
+
+// 	switch {
+// 	case challenge.Status.CurrentStatus.IsNone():
+// 		if err := r.Get(ctx, req.NamespacedName, &challenge); err != nil {
+// 			return r.handleError(ctx, &challenge, err)
+// 		}
+
+// 		challenge.Status.CurrentStatus.SetCreating()
+// 		if err := r.Status().Update(ctx, &challenge); err != nil {
+// 			return r.handleError(ctx, &challenge, err)
+// 		}
+
+// 		err := r.loadChallengeDefinition(ctx, &challenge)
+// 		if err != nil {
+// 			return r.handleError(ctx, &challenge, err)
+// 		}
+
+// 		if err := r.Get(ctx, req.NamespacedName, &challenge); err != nil {
+// 			return r.handleError(ctx, &challenge, err)
+// 		}
+
+// 		challenge.Status.CurrentStatus.SetRunning()
+// 		now := metav1.Now()
+// 		challenge.Status.StartedAt = &now
+// 		if err := r.Status().Update(ctx, &challenge); err != nil {
+// 			return r.handleError(ctx, &challenge, err)
+// 		}
+
+// 		// err = r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Running")
+// 		// if err != nil {
+// 		// 	log.Error(err, "Failed to send status change message")
+// 		// 	return r.handleError(ctx, &challenge, err)
+// 		// }
+
+// 		return ctrl.Result{Requeue: true}, nil
+// 	case challenge.Status.CurrentStatus.IsRunning():
+// 		if err := r.Get(ctx, req.NamespacedName, &challenge); err != nil {
+// 			return r.handleError(ctx, &challenge, err)
+// 		}
+
+// 		// isOne이 false이면 일정 시간 내에만 작동
+// 		if time.Since(challenge.Status.StartedAt.Time) > challengeDuration {
+
+// 			return r.handleDeletion(ctx, &challenge)
+// 		}
+
+// 		if !challenge.DeletionTimestamp.IsZero() {
+// 			return r.handleDeletion(ctx, &challenge)
+// 		}
+
+// 		// Running 메세지 전송
+// 		err := r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Running")
+// 		if err != nil {
+// 			log.Error(err, "Failed to send status change message")
+// 			return r.handleError(ctx, &challenge, err)
+// 		}
+// 		return ctrl.Result{RequeueAfter: requeueInterval}, nil
+// 	}
+// 	return ctrl.Result{}, nil
+// }
+
+// // handleError 에러 발생 시 로깅과 상태(CurrentStatus)를 업데이트한다.
+// func (r *ChallengeReconciler) handleError(ctx context.Context, challenge *hexactfproj.Challenge, err error) (ctrl.Result, error) {
+
+// 	// 최신 상태 가져오기
+// 	latest := &hexactfproj.Challenge{}
+// 	if err := r.Get(ctx, client.ObjectKey{
+// 		Namespace: challenge.Namespace,
+// 		Name:      challenge.Name,
+// 	}, latest); err != nil {
+// 		return ctrl.Result{}, err
+// 	}
+
+// 	// 낙관적 동시성 제어
+// 	latest.Status.CurrentStatus.SetError(err)
+// 	patch := client.MergeFrom(latest.DeepCopy())
+// 	if updateErr := r.Status().Patch(ctx, latest, patch); updateErr != nil {
+// 		log.Error(updateErr, "failed to update Challenge status")
+// 		return ctrl.Result{}, updateErr
+// 	}
+
+// 	err = r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Error")
+// 	if err != nil {
+// 		log.Error(err, "Failed to send status change message")
+// 		return ctrl.Result{}, err
+// 	}
+
+// 	return ctrl.Result{}, err
+// }
+
 func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
 	challenge := hexactfproj.Challenge{}
 	if err := r.Get(ctx, req.NamespacedName, &challenge); err != nil {
+		// NotFound 에러 등은 무시
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// Check deletion first
+	// 1. 이미 삭제 진행중(DeletionTimestamp가 찍힘)이라면 handleDeletion 수행
 	if !challenge.DeletionTimestamp.IsZero() {
 		return r.handleDeletion(ctx, &challenge)
 	}
 
-	// Add finalizer if not present
+	// 2. Finalizer가 없다면 추가
 	if !containsString(challenge.Finalizers) {
 		return r.addFinalizer(ctx, &challenge)
 	}
 
-	// init
+	// 3. 처음 생성 시 StartedAt 등 Status 초기화
 	if challenge.Status.StartedAt == nil {
 		if err := r.Get(ctx, req.NamespacedName, &challenge); err != nil {
 			return r.handleError(ctx, &challenge, err)
@@ -98,8 +219,10 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 
+	// 4. 현재 상태에 따라 분기
 	switch {
 	case challenge.Status.CurrentStatus.IsNone():
+		// 상태를 Creating -> Running 으로 전환
 		if err := r.Get(ctx, req.NamespacedName, &challenge); err != nil {
 			return r.handleError(ctx, &challenge, err)
 		}
@@ -109,11 +232,13 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return r.handleError(ctx, &challenge, err)
 		}
 
+		// 실제 Challenge에 필요한 리소스들(Deployment, Service 등) 생성 로직
 		err := r.loadChallengeDefinition(ctx, &challenge)
 		if err != nil {
 			return r.handleError(ctx, &challenge, err)
 		}
 
+		// 다시 한번 최신화
 		if err := r.Get(ctx, req.NamespacedName, &challenge); err != nil {
 			return r.handleError(ctx, &challenge, err)
 		}
@@ -125,66 +250,58 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return r.handleError(ctx, &challenge, err)
 		}
 
+		// 필요 시 Kafka 메시지 전송
 		// err = r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Running")
 		// if err != nil {
-		// 	log.Error(err, "Failed to send status change message")
-		// 	return r.handleError(ctx, &challenge, err)
+		//     log.Error(err, "Failed to send status change message")
+		//     return r.handleError(ctx, &challenge, err)
 		// }
 
+		// 한 번 더 재큐(Requeue)하여 바로 다음 단계 확인
 		return ctrl.Result{Requeue: true}, nil
+
 	case challenge.Status.CurrentStatus.IsRunning():
+		// 최신화
 		if err := r.Get(ctx, req.NamespacedName, &challenge); err != nil {
 			return r.handleError(ctx, &challenge, err)
 		}
 
-		// isOne이 false이면 일정 시간 내에만 작동
+		// 4-1. 5분 초과 시 Delete 요청
 		if time.Since(challenge.Status.StartedAt.Time) > challengeDuration {
-
-			return r.handleDeletion(ctx, &challenge)
+			// 아직 DeletionTimestamp가 없다면 Delete 요청
+			if challenge.DeletionTimestamp.IsZero() {
+				log.Info("Time exceeded; issuing a Delete request", "challenge", challenge.Name)
+				if err := r.Delete(ctx, &challenge); err != nil {
+					log.Error(err, "Failed to delete challenge")
+					return r.handleError(ctx, &challenge, err)
+				}
+				// Delete 요청 후에는 Kubernetes가 DeletionTimestamp를 설정하고
+				// 다시 Reconcile이 호출되면 handleDeletion()이 수행됨
+				return ctrl.Result{}, nil
+			} else {
+				// 이미 Delete 진행중이면 handleDeletion으로
+				return r.handleDeletion(ctx, &challenge)
+			}
 		}
 
+		// 4-2. 이미 삭제 요청(DeletionTimestamp가 존재) 중이라면 handleDeletion으로
 		if !challenge.DeletionTimestamp.IsZero() {
 			return r.handleDeletion(ctx, &challenge)
 		}
 
-		// Running 메세지 전송
+		// 4-3. 아직 삭제 대상이 아니라면 Running 상태 유지
 		err := r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Running")
 		if err != nil {
 			log.Error(err, "Failed to send status change message")
 			return r.handleError(ctx, &challenge, err)
 		}
+
+		// 주기적으로 다시 Reconcile
 		return ctrl.Result{RequeueAfter: requeueInterval}, nil
 	}
+
+	// 그 외 상태
 	return ctrl.Result{}, nil
-}
-
-// handleError 에러 발생 시 로깅과 상태(CurrentStatus)를 업데이트한다.
-func (r *ChallengeReconciler) handleError(ctx context.Context, challenge *hexactfproj.Challenge, err error) (ctrl.Result, error) {
-
-	// 최신 상태 가져오기
-	latest := &hexactfproj.Challenge{}
-	if err := r.Get(ctx, client.ObjectKey{
-		Namespace: challenge.Namespace,
-		Name:      challenge.Name,
-	}, latest); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	// 낙관적 동시성 제어
-	latest.Status.CurrentStatus.SetError(err)
-	patch := client.MergeFrom(latest.DeepCopy())
-	if updateErr := r.Status().Patch(ctx, latest, patch); updateErr != nil {
-		log.Error(updateErr, "failed to update Challenge status")
-		return ctrl.Result{}, updateErr
-	}
-
-	err = r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Error")
-	if err != nil {
-		log.Error(err, "Failed to send status change message")
-		return ctrl.Result{}, err
-	}
-
-	return ctrl.Result{}, err
 }
 
 func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *hexactfproj.Challenge) (ctrl.Result, error) {
@@ -243,6 +360,34 @@ func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *hex
 // 	log.Info("Successfully completed deletion process")
 // 	return ctrl.Result{}, nil
 // }
+
+// handleError: 상태를 Error로 변경하고 로그 & Kafka 메시지 전송 등
+func (r *ChallengeReconciler) handleError(ctx context.Context, challenge *hexactfproj.Challenge, err error) (ctrl.Result, error) {
+	latest := &hexactfproj.Challenge{}
+	if getErr := r.Get(ctx, client.ObjectKey{
+		Namespace: challenge.Namespace,
+		Name:      challenge.Name,
+	}, latest); getErr != nil {
+		// Challenge 자체를 못 찾으면 더 이상 할 일 없음
+		return ctrl.Result{}, getErr
+	}
+
+	latest.Status.CurrentStatus.SetError(err)
+	patch := client.MergeFrom(latest.DeepCopy())
+	if updateErr := r.Status().Patch(ctx, latest, patch); updateErr != nil {
+		log.Error(updateErr, "failed to update Challenge status")
+		return ctrl.Result{}, updateErr
+	}
+
+	// 상태를 Error로 전송
+	sendErr := r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Error")
+	if sendErr != nil {
+		log.Error(sendErr, "Failed to send status change message")
+		return ctrl.Result{}, sendErr
+	}
+
+	return ctrl.Result{}, err
+}
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ChallengeReconciler) SetupWithManager(mgr ctrl.Manager) error {
