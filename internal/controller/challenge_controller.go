@@ -137,7 +137,7 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 
 		// isOne이 false이면 일정 시간 내에만 작동
-		if !challenge.Status.IsOne && time.Since(challenge.Status.StartedAt.Time) > challengeDuration {
+		if time.Since(challenge.Status.StartedAt.Time) > challengeDuration {
 
 			return r.handleDeletion(ctx, &challenge)
 		}
@@ -152,8 +152,9 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			log.Error(err, "Failed to send status change message")
 			return r.handleError(ctx, &challenge, err)
 		}
+		return ctrl.Result{RequeueAfter: requeueInterval}, nil
 	}
-	return ctrl.Result{RequeueAfter: requeueInterval}, nil
+	return ctrl.Result{}, nil
 }
 
 // handleError 에러 발생 시 로깅과 상태(CurrentStatus)를 업데이트한다.
