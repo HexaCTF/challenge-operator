@@ -102,10 +102,14 @@ func main() {
 	// More info:
 	// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.1/pkg/metrics/server
 	// - https://book.kubebuilder.io/reference/metrics.html
+	// metricsServerOptions := metricsserver.Options{
+	// 	BindAddress:   metricsAddr,
+	// 	SecureServing: secureMetrics,
+	// 	TLSOpts:       tlsOpts,
+	// }
 	metricsServerOptions := metricsserver.Options{
 		BindAddress:   metricsAddr,
-		SecureServing: secureMetrics,
-		TLSOpts:       tlsOpts,
+		SecureServing: false,
 	}
 
 	if secureMetrics {
