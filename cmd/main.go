@@ -108,7 +108,7 @@ func main() {
 	// 	TLSOpts:       tlsOpts,
 	// }
 	metricsServerOptions := metricsserver.Options{
-		BindAddress:   metricsAddr,
+		BindAddress:   ":8080",
 		SecureServing: false,
 	}
 
