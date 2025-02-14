@@ -8,10 +8,10 @@ import (
 var (
 	crStatusMetric = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "custom_resource_status",
+			Name: "challenge_resource_status",
 			Help: "Tracks the status of the custom resource",
 		},
-		[]string{"name", "namespace", "status"},
+		[]string{"name", "namespace"},
 	)
 )
 

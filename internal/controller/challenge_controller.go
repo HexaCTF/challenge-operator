@@ -86,6 +86,8 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// 처음 생성 시 StartedAt 등 Status 초기화
 	if challenge.Status.StartedAt == nil {
+		crStatusMetric.WithLabelValues(challenge.Name, challenge.Namespace).Set(0)
+
 		if err := r.Get(ctx, req.NamespacedName, &challenge); err != nil {
 			return r.handleError(ctx, &challenge, err)
 		}
@@ -134,7 +136,7 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if err := r.Status().Update(ctx, &challenge); err != nil {
 			return r.handleError(ctx, &challenge, err)
 		}
-		crStatusMetric.WithLabelValues(challenge.Name, challenge.Namespace, challenge.Status.CurrentStatus.String()).Set(1)
+		crStatusMetric.WithLabelValues(challenge.Name, challenge.Namespace).Set(1)
 
 		// 한 번 더 재큐(Requeue)하여 바로 다음 단계 확인
 		return ctrl.Result{Requeue: true}, nil
@@ -186,7 +188,6 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *hexactfproj.Challenge) (ctrl.Result, error) {
 	log.Info("Processing deletion", "challenge", challenge.Name)
 
-	crStatusMetric.DeleteLabelValues(challenge.Name, challenge.Namespace, "Running")
 	// 1. Finalizer가 남아있는지 확인
 	if controllerutil.ContainsFinalizer(challenge, "challenge.hexactf.io/finalizer") {
 
@@ -213,7 +214,7 @@ func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *hex
 		}
 	}
 
-	crStatusMetric.WithLabelValues(challenge.Name, challenge.Namespace, "Deleted").Set(1)
+	crStatusMetric.WithLabelValues(challenge.Name, challenge.Namespace).Set(2)
 
 	log.Info("Successfully completed deletion process")
 	// 이 시점에서 finalizers가 비어 있으므로, K8s가 오브젝트를 실제 삭제함
@@ -231,16 +232,13 @@ func (r *ChallengeReconciler) handleError(ctx context.Context, challenge *hexact
 		return ctrl.Result{}, getErr
 	}
 
-	crStatusMetric.DeleteLabelValues(challenge.Name, challenge.Namespace, challenge.Status.CurrentStatus.String())
-
 	latest.Status.CurrentStatus.SetError(err)
 	patch := client.MergeFrom(latest.DeepCopy())
 	if updateErr := r.Status().Patch(ctx, latest, patch); updateErr != nil {
 		log.Error(updateErr, "failed to update Challenge status")
 		return ctrl.Result{}, updateErr
 	}
-	crStatusMetric.WithLabelValues(challenge.Name, challenge.Namespace, challenge.Status.CurrentStatus.String()).Set(1)
-
+	crStatusMetric.WithLabelValues(challenge.Name, challenge.Namespace).Set(3)
 	// 상태를 Error로 전송
 	sendErr := r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Error")
 	if sendErr != nil {
