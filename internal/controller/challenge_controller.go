@@ -187,6 +187,7 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *hexactfproj.Challenge) (ctrl.Result, error) {
 	log.Info("Processing deletion", "challenge", challenge.Name)
+	crStatusMetric.WithLabelValues(challenge.Name, challenge.Namespace).Set(2)
 
 	// 1. Finalizer가 남아있는지 확인
 	if controllerutil.ContainsFinalizer(challenge, "challenge.hexactf.io/finalizer") {
@@ -214,8 +215,7 @@ func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *hex
 		}
 	}
 
-	crStatusMetric.WithLabelValues(challenge.Name, challenge.Namespace).Set(2)
-
+	crStatusMetric.DeleteLabelValues(challenge.Name, challenge.Namespace)
 	log.Info("Successfully completed deletion process")
 	// 이 시점에서 finalizers가 비어 있으므로, K8s가 오브젝트를 실제 삭제함
 	return ctrl.Result{}, nil
