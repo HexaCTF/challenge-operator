@@ -119,6 +119,9 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return r.handleError(ctx, &challenge, err)
 		}
 
+		if err := r.Get(ctx, req.NamespacedName, &challenge); err != nil {
+			return r.handleError(ctx, &challenge, err)
+		}
 		// 실제 Challenge에 필요한 리소스들(Deployment, Service 등) 생성 로직
 		err := r.loadChallengeDefinition(ctx, &challenge)
 		if err != nil {
