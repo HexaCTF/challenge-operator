@@ -218,6 +218,7 @@ func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *hex
 		}
 	}
 
+	crStatusMetric.WithLabelValues(challenge.Name, challenge.Namespace).Set(0)
 	crStatusMetric.DeleteLabelValues(challenge.Name, challenge.Namespace)
 	log.Info("Successfully completed deletion process")
 	// 이 시점에서 finalizers가 비어 있으므로, K8s가 오브젝트를 실제 삭제함
