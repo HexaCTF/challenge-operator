@@ -181,29 +181,6 @@ func (r *ChallengeReconciler) loadService(ctx context.Context, challenge *hexact
 			log.Info("Successfully created service",
 				"name", identifier.GetServicePrefix())
 
-			// NodePort 확인하기
-			// Service 생성 후 해당 객체를 다시 조회하여 NodePort 확인
-			// createdService := &corev1.Service{}
-			// if err := r.Get(ctx, types.NamespacedName{
-			// 	Name:      identifier.GetServicePrefix(),
-			// 	Namespace: challenge.Namespace,
-			// }, createdService); err != nil {
-			// 	log.Error(err, "Failed to get created Service")
-			// 	return err
-			// }
-
-			// // NodePort 타입인 경우 포트 번호 로깅
-			// // !NOTICE NodePort가 하나인 경우만 가정하고 구현
-			// if createdService.Spec.Type == corev1.ServiceTypeNodePort {
-			// 	challenge.Status.Endpoint = int(createdService.Spec.Ports[0].NodePort)
-			// 	log.Info("NodePort created",
-			// 		"port", createdService.Spec.Ports[0].NodePort)
-			// }
-			// if err := r.Status().Update(ctx, challenge); err != nil {
-			// 	log.Error(err, "Failed to update Challenge status with NodePort information")
-			// 	return err
-			// }
-
 			if service.Spec.Type == corev1.ServiceTypeNodePort {
 				challenge.Status.Endpoint = int(service.Spec.Ports[0].NodePort)
 				log.Info("NodePort created",
