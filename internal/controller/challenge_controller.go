@@ -203,7 +203,14 @@ func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *hex
 
 	// Cleanup metrics for this resource
 	crStatusMetric.WithLabelValues(challenge.Name, challenge.Namespace).Set(3)
-	crStatusMetric.DeleteLabelValues(challenge.Name, challenge.Namespace)
+
+	// crStatusMetric.DeleteLabelValues(challenge.Name, challenge.Namespace)
+	// 삭제 로직 고루틴
+	go func() {
+		time.Sleep(1 * time.Minute) // scrape_interval이 30초라면 1분 정도 기다리면 안전
+		crStatusMetric.DeleteLabelValues(challenge.Name, challenge.Namespace)
+	}()
+
 	log.Info("Successfully completed deletion process")
 	// After finalizer is removed, K8s will delete the object
 	return ctrl.Result{}, nil
