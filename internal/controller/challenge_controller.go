@@ -98,9 +98,14 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// 4) Initialization if not set
 	if challenge.Status.StartedAt == nil {
 		crStatusMetric.WithLabelValues(challenge.Name, challenge.Namespace).Set(0)
+
 		now := metav1.Now()
 		challenge.Status.StartedAt = &now
 		challenge.Status.CurrentStatus = *hexactfproj.NewCurrentStatus()
+		if err := r.Status().Update(ctx, challenge); err != nil {
+			log.Error(err, "Failed to initialize status")
+			return r.handleError(ctx, challenge, err)
+		}
 	}
 
 	// 5) Main logic based on current status
@@ -200,9 +205,6 @@ func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *hex
 			return ctrl.Result{}, err
 		}
 	}
-
-	// Cleanup metrics for this resource
-	crStatusMetric.WithLabelValues(challenge.Name, challenge.Namespace).Set(3)
 
 	// crStatusMetric.DeleteLabelValues(challenge.Name, challenge.Namespace)
 	// 삭제 로직 고루틴
