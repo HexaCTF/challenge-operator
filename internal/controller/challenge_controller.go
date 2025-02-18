@@ -86,7 +86,7 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// 처음 생성 시 StartedAt 등 Status 초기화
 	if challenge.Status.StartedAt == nil {
-		crStatusMetric.WithLabelValues(challenge.Name, challenge.Namespace).Set(0)
+		crStatusMetric.WithLabelValues(challenge.Labels["apps.hexactf.io/challengeId"], challenge.Name, challenge.Labels["apps.hexactf.io/user"], challenge.Namespace).Set(0)
 
 		if err := r.Get(ctx, req.NamespacedName, &challenge); err != nil {
 			return r.handleError(ctx, req, &challenge, err)
