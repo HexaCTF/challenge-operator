@@ -11,10 +11,20 @@ var (
 			Name: "challenge_resource_status",
 			Help: "Tracks the status of the custom resource",
 		},
-		[]string{"name", "namespace"},
+		[]string{"challeng_id", "challenge_name", "username", "namespace"},
+	)
+
+	challengeStatusCount = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "challenge_status_count",
+			Help: "Total count of challenges that are running",
+		},
+		[]string{"status"},
 	)
 )
 
 func init() {
 	metrics.Registry.MustRegister(crStatusMetric)
+	metrics.Registry.MustRegister(challengeStatusCount)
+
 }
