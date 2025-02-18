@@ -23,6 +23,9 @@ func (r *ChallengeReconciler) loadChallengeDefinition(ctx context.Context, chall
 	}
 
 	// IsOne 설정
+	if !definition.Spec.IsOne {
+		definition.Spec.IsOne = false
+	}
 	challenge.Status.IsOne = definition.Spec.IsOne
 	// Update the status in the cluster
 	if err := r.Status().Update(ctx, challenge); err != nil {
