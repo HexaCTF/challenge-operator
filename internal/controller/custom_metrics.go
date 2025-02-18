@@ -13,18 +13,9 @@ var (
 		},
 		[]string{"challeng_id", "challenge_name", "username", "namespace"},
 	)
-
-	challengeStatusCount = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "challenge_status_count",
-			Help: "Total count of challenges that are running",
-		},
-		[]string{"status"},
-	)
 )
 
 func init() {
 	metrics.Registry.MustRegister(crStatusMetric)
-	metrics.Registry.MustRegister(challengeStatusCount)
 
 }

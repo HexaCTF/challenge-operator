@@ -146,7 +146,6 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 		// Metrics
 		crStatusMetric.WithLabelValues(challenge.Labels["apps.hexactf.io/challengeId"], challenge.Name, challenge.Labels["apps.hexactf.io/user"], challenge.Namespace).Set(1)
-		challengeStatusCount.WithLabelValues("Running").Inc()
 
 		// 한 번 더 재큐(Requeue)하여 바로 다음 단계 확인
 		return ctrl.Result{Requeue: true}, nil
@@ -226,8 +225,6 @@ func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *hex
 		}
 	}
 
-	challengeStatusCount.WithLabelValues("Running").Dec()
-	challengeStatusCount.WithLabelValues("Deleted").Inc()
 	go func() {
 		time.Sleep(1 * time.Minute) // scrape_interval이 30초라면 1분 정도 기다리면 안전
 		crStatusMetric.DeleteLabelValues(challenge.Labels["apps.hexactf.io/challengeId"], challenge.Name, challenge.Labels["apps.hexactf.io/user"], challenge.Namespace)
