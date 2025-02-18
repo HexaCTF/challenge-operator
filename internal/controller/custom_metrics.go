@@ -11,10 +11,11 @@ var (
 			Name: "challenge_resource_status",
 			Help: "Tracks the status of the custom resource",
 		},
-		[]string{"name", "namespace"},
+		[]string{"challeng_id", "challenge_name", "username", "namespace"},
 	)
 )
 
 func init() {
 	metrics.Registry.MustRegister(crStatusMetric)
+
 }

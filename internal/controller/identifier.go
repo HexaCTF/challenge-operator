@@ -26,6 +26,8 @@ func NewChallengeIdentifier(challenge *hexactfproj.Challenge, component hexactfp
 		"apps.hexactf.io/name":       component.Name,
 		"apps.hexactf.io/part-of":    challenge.Name,
 		"apps.hexactf.io/managed-by": "challenge-operator",
+		"apps.hexactf.io/deployment": prefix + "-deploy",
+		"apps.hexactf.io/service":    prefix + "-svc",
 	}
 
 	return &ChallengeIdentifier{

@@ -86,7 +86,7 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// 처음 생성 시 StartedAt 등 Status 초기화
 	if challenge.Status.StartedAt == nil {
-		crStatusMetric.WithLabelValues(challenge.Name, challenge.Namespace).Set(0)
+		crStatusMetric.WithLabelValues(challenge.Labels["apps.hexactf.io/challengeId"], challenge.Name, challenge.Labels["apps.hexactf.io/user"], challenge.Namespace).Set(0)
 
 		if err := r.Get(ctx, req.NamespacedName, &challenge); err != nil {
 			return r.handleError(ctx, req, &challenge, err)
@@ -144,7 +144,8 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if err := r.Status().Update(ctx, &challenge); err != nil {
 			return r.handleError(ctx, req, &challenge, err)
 		}
-		crStatusMetric.WithLabelValues(challenge.Name, challenge.Namespace).Set(1)
+		// Metrics
+		crStatusMetric.WithLabelValues(challenge.Labels["apps.hexactf.io/challengeId"], challenge.Name, challenge.Labels["apps.hexactf.io/user"], challenge.Namespace).Set(1)
 
 		// 한 번 더 재큐(Requeue)하여 바로 다음 단계 확인
 		return ctrl.Result{Requeue: true}, nil
@@ -196,7 +197,7 @@ func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *hexactfproj.Challenge) (ctrl.Result, error) {
 	log.Info("Processing deletion", "challenge", challenge.Name)
-	crStatusMetric.WithLabelValues(challenge.Name, challenge.Namespace).Set(2)
+	crStatusMetric.WithLabelValues(challenge.Labels["apps.hexactf.io/challengeId"], challenge.Name, challenge.Labels["apps.hexactf.io/user"], challenge.Namespace).Set(2)
 
 	// 1. Finalizer가 남아있는지 확인
 	if controllerutil.ContainsFinalizer(challenge, "challenge.hexactf.io/finalizer") {
@@ -226,7 +227,7 @@ func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *hex
 
 	go func() {
 		time.Sleep(1 * time.Minute) // scrape_interval이 30초라면 1분 정도 기다리면 안전
-		crStatusMetric.DeleteLabelValues(challenge.Name, challenge.Namespace)
+		crStatusMetric.DeleteLabelValues(challenge.Labels["apps.hexactf.io/challengeId"], challenge.Name, challenge.Labels["apps.hexactf.io/user"], challenge.Namespace)
 	}()
 	log.Info("Successfully completed deletion process")
 	// 이 시점에서 finalizers가 비어 있으므로, K8s가 오브젝트를 실제 삭제함
@@ -235,22 +236,6 @@ func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *hex
 
 // handleError: 상태를 Error로 변경하고 로그 & Kafka 메시지 전송 등
 func (r *ChallengeReconciler) handleError(ctx context.Context, req ctrl.Request, challenge *hexactfproj.Challenge, err error) (ctrl.Result, error) {
-	// latest := &hexactfproj.Challenge{}
-	// if getErr := r.Get(ctx, client.ObjectKey{
-	// 	Namespace: challenge.Namespace,
-	// 	Name:      challenge.Name,
-	// }, latest); getErr != nil {
-	// 	// Challenge 자체를 못 찾으면 더 이상 할 일 없음
-	// 	return ctrl.Result{}, getErr
-	// }
-
-	// latest.Status.CurrentStatus.SetError(err)
-	// patch := client.MergeFrom(latest.DeepCopy())
-	// if updateErr := r.Status().Patch(ctx, latest, patch); updateErr != nil {
-	// 	log.Error(updateErr, "failed to update Challenge status")
-	// 	return ctrl.Result{}, updateErr
-	// }
-
 	// 최신 상태로 갱신
 	if err := r.Get(ctx, req.NamespacedName, challenge); err != nil {
 		// NotFound 에러 등은 무시
@@ -262,7 +247,7 @@ func (r *ChallengeReconciler) handleError(ctx context.Context, req ctrl.Request,
 		return ctrl.Result{}, err
 	}
 
-	crStatusMetric.WithLabelValues(challenge.Name, challenge.Namespace).Set(3)
+	crStatusMetric.WithLabelValues(challenge.Labels["apps.hexactf.io/challengeId"], challenge.Name, challenge.Labels["apps.hexactf.io/user"], challenge.Namespace).Set(3)
 	// 상태를 Error로 전송
 	sendErr := r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Error")
 	if sendErr != nil {
