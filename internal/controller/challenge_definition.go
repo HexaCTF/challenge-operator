@@ -22,6 +22,11 @@ func (r *ChallengeReconciler) loadChallengeDefinition(ctx context.Context, chall
 
 	}
 
+	challenge = &hexactfproj.Challenge{}
+	if err := r.Get(ctx, client.ObjectKey{Name: challenge.Name, Namespace: challenge.Namespace}, challenge); err != nil {
+		log.Error(err, "failed to get latest Challenge")
+		return err
+	}
 	// IsOne 설정
 	if !definition.Spec.IsOne {
 		definition.Spec.IsOne = false
