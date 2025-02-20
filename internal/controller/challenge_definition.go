@@ -14,7 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func (r *ChallengeReconciler) loadChallengeDefinition(ctx context.Context, challenge *hexactfproj.Challenge) error {
+func (r *ChallengeReconciler) loadChallengeDefinition(ctx context.Context, req ctrl.Request, challenge *hexactfproj.Challenge) error {
 	// Fetch the challenge definition
 	definition, err := r.getChallengeDefinition(ctx, challenge)
 	if err != nil {
@@ -22,39 +22,33 @@ func (r *ChallengeReconciler) loadChallengeDefinition(ctx context.Context, chall
 		return err
 	}
 
-	// Fetch the latest challenge from the cluster
-	latestChallenge := &hexactfproj.Challenge{}
-	if err := r.Get(ctx, client.ObjectKey{Name: challenge.Name, Namespace: challenge.Namespace}, latestChallenge); err != nil {
-		log.Error(err, "Failed to get latest Challenge", "name", challenge.Name, "namespace", challenge.Namespace)
-		return err
-	}
+	challenge.Status.IsOne = definition.Spec.IsOne
 
-	// Ensure IsOne is set correctly
-	latestChallenge.Status.IsOne = definition.Spec.IsOne
-
-	// Update the status in the cluster
-	if err := r.Status().Update(ctx, latestChallenge); err != nil {
+	if err := r.Status().Update(ctx, challenge); err != nil {
 		log.Error(err, "Failed to update Challenge status")
 		return err
 	}
 
-	// Load components (Deployments and Services)
-	for _, component := range definition.Spec.Components {
-		identifier := NewChallengeIdentifier(latestChallenge, component)
+	if err := r.Get(ctx, req.NamespacedName, challenge); err != nil {
+		return err
+	}
 
-		if err = r.loadDeployment(ctx, latestChallenge, component, identifier); err != nil {
+	for _, component := range definition.Spec.Components {
+		identifier := NewChallengeIdentifier(challenge, component)
+
+		if err = r.loadDeployment(ctx, challenge, component, identifier); err != nil {
 			log.Error(err, "Failed to load Deployment", "component", component)
 			return err
 		}
 
-		if err = r.loadService(ctx, latestChallenge, component, identifier); err != nil {
+		if err = r.loadService(ctx, challenge, component, identifier); err != nil {
 			log.Error(err, "Failed to load Service", "component", component)
 			return err
 		}
 	}
 
 	// Send Kafka message
-	user, challengeID := latestChallenge.Labels["apps.hexactf.io/user"], latestChallenge.Labels["apps.hexactf.io/challengeId"]
+	user, challengeID := challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"]
 	if err = r.KafkaClient.SendStatusChange(user, challengeID, "Creating"); err != nil {
 		log.Error(err, "Failed to send status change message", "user", user, "challengeID", challengeID)
 		return err
@@ -182,7 +176,6 @@ func (r *ChallengeReconciler) loadDeployment(ctx context.Context, challenge *hex
 }
 
 // LoadService Service 리소스 생성
-// TODO(Addition): 랜덤으로 NodePort를 할당
 func (r *ChallengeReconciler) loadService(ctx context.Context, challenge *hexactfproj.Challenge,
 	component hexactfproj.Component, identifier *ChallengeIdentifier) error {
 
