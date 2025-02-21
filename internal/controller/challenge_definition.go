@@ -22,16 +22,16 @@ func (r *ChallengeReconciler) loadChallengeDefinition(ctx context.Context, req c
 		return err
 	}
 
-	challenge.Status.IsOne = definition.Spec.IsOne
+	// challenge.Status.IsOne = definition.Spec.IsOne
 
-	if err := r.Status().Update(ctx, challenge); err != nil {
-		log.Error(err, "Failed to update Challenge status")
-		return err
-	}
+	// if err := r.Status().Update(ctx, challenge); err != nil {
+	// 	log.Error(err, "Failed to update Challenge status")
+	// 	return err
+	// }
 
-	if err := r.Get(ctx, req.NamespacedName, challenge); err != nil {
-		return err
-	}
+	// if err := r.Get(ctx, req.NamespacedName, challenge); err != nil {
+	// 	return err
+	// }
 
 	for _, component := range definition.Spec.Components {
 		identifier := NewChallengeIdentifier(challenge, component)
