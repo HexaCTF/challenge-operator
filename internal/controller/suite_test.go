@@ -18,9 +18,8 @@ package controller
 
 import (
 	"context"
-	"fmt"
+	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -67,8 +66,9 @@ var _ = BeforeSuite(func() {
 		// default path defined in controller-runtime which is /usr/local/kubebuilder/.
 		// Note that you must have the required binaries setup under the bin directory to perform
 		// the tests directly. When we run make test it will be setup and used automatically.
-		BinaryAssetsDirectory: filepath.Join("..", "..", "bin", "k8s",
-			fmt.Sprintf("1.31.0-%s-%s", runtime.GOOS, runtime.GOARCH)),
+		BinaryAssetsDirectory: os.Getenv("KUBEBUILDER_ASSETS"),
+		// BinaryAssetsDirectory: filepath.Join("..", "..", "bin", "k8s",
+		// 	fmt.Sprintf("1.32.0-%s-%s", runtime.GOOS, runtime.GOARCH)) ,
 	}
 
 	var err error

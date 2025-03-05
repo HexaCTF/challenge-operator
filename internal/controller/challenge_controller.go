@@ -33,8 +33,8 @@ import (
 
 const (
 	challengeDuration = 30 * time.Minute
-	requeueInterval   = 30 * time.Second
-	warningThreshold  = 2 * time.Minute // Time to start warning about impending timeout
+	requeueInterval   = 1 * time.Minute
+	warningThreshold  = 2 * time.Minute
 )
 
 var log = logr.Log.WithName("ChallengeController")
@@ -199,13 +199,13 @@ func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *hex
 	log.Info("Processing deletion", "challenge", challenge.Name)
 	crStatusMetric.WithLabelValues(challenge.Labels["apps.hexactf.io/challengeId"], challenge.Name, challenge.Labels["apps.hexactf.io/user"], challenge.Namespace).Set(2)
 
-	// 1. Finalizer가 남아있는지 확인
+	// Finalizer가 남아있는지 확인
 	if controllerutil.ContainsFinalizer(challenge, "challenge.hexactf.io/finalizer") {
 
-		// 3. 파이널라이저 제거
+		// 파이널라이저 제거
 		controllerutil.RemoveFinalizer(challenge, "challenge.hexactf.io/finalizer")
 
-		// 4. 메타데이터 업데이트
+		// 메타데이터 업데이트
 		if err := r.Update(ctx, challenge); err != nil {
 			log.Error(err, "Failed to remove finalizer")
 			// 재시도 위해 Requeue

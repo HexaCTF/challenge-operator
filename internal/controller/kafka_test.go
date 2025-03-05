@@ -156,22 +156,18 @@ func TestNewKafkaProducer(t *testing.T) {
 }
 
 func TestKafkaProducer_SendStatusChange_ProducerError(t *testing.T) {
-	// Create mock producer that expects a message and returns an error
 	mockProducer := mocks.NewSyncProducer(t, nil)
 	defer mockProducer.Close()
 
-	// Set up the mock to return an error
 	mockProducer.ExpectSendMessageAndFail(sarama.ErrBrokerNotAvailable)
 
 	kafkaProducer := &KafkaProducer{
 		producer: mockProducer,
 	}
 
-	// Attempt to send a message
 	err := kafkaProducer.SendStatusChange("user1", "problem1", "Created")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to send Kafka message")
 
-	// Ensure all expectations were met
 	assert.NoError(t, mockProducer.Close())
 }

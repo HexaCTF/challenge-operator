@@ -43,10 +43,7 @@ func NewKafkaProducer(brokers []string) (*KafkaProducer, error) {
 		if err == nil {
 			break
 		}
-		//log.Info("Failed to connect to Kafka, retrying...",
-		//	"attempt", i+1,
-		//	"maxRetries", maxRetries,
-		//	"error", err)
+
 		time.Sleep(retryInterval)
 	}
 	if err != nil {
