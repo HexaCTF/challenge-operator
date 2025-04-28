@@ -3,7 +3,6 @@
 CTF 대회에서 사용자마다 시스템 문제처럼 고유한 환경을 가지고 있어야 하는 문제 유형이 있습니다. 이는 일반 컨테이너로 구현하기에는 한계가 있습니다.
 이러한 문제를 쿠버네티스 오퍼레이터 패턴을 통해 해결하고자 합니다.
 
-
 전반적으로 AWS CloudFormation Template 컨셉을 차용했습니다. Template으로 리소스를 생성하는 것처럼 ChallengeDefinition을 정의하여 Challenge를 생성할 수 있게 설계했습니다.
 
 ## Description
