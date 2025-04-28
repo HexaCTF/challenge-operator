@@ -11,7 +11,8 @@ CTF 대회에서 사용자마다 시스템 문제처럼 고유한 환경을 가�
 
 ![ChallengeDefinition & Challenge](./assets/image.png)
 
-해킹 대회 참여자는 기타 대회 플랫폼(ex. DreamHack)처럼 IP과 포트 번호를 제공받습니다. 참여자는 해당 정보를 가지고 문제를 풀 수 있습니다.
+해킹 대회 참여자는 기타 대회 플랫폼(ex. DreamHack)처럼 IP과 포트 번호를 제공받습니다. 
+참여자는 해당 정보를 가지고 문제를 풀 수 있습니다.
 
 ![역할에 따른 구성도](./assets/image1.png)
 
