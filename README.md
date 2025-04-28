@@ -21,7 +21,6 @@ CTF 대회에서 사용자마다 시스템 문제처럼 고유한 환경을 가�
 
 문제를 등록하기 위해서는 ChallengeDefinition이라는 쿠버네티스 커스텀 리소스(CR)를 정의해야 합니다.
 
-
 ##### Spec
 
 |    Key     | Type              | Default | Description                 |
