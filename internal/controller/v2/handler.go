@@ -25,6 +25,11 @@ func (r *ChallengeReconciler) initializeChallenge(ctx context.Context, challenge
 	if err := r.Status().Update(ctx, challenge); err != nil {
 		return fmt.Errorf("failed to initialize status: %w", err)
 	}
+
+	if err := r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/userId"], challenge.Labels["apps.hexactf.io/challengeId"], "Pending"); err != nil {
+		return fmt.Errorf("failed to send status change: %w", err)
+	}
+
 	return nil
 }
 
@@ -47,6 +52,11 @@ func (r *ChallengeReconciler) handlePendingState(ctx context.Context, challenge 
 		challenge.Status.CurrentStatus.Running()
 		if err := r.Status().Update(ctx, challenge); err != nil {
 			log.Error(err, "Failed to update Challenge status", "challenge", challenge.Name)
+		}
+
+		// Send Message
+		if err := r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/userId"], challenge.Labels["apps.hexactf.io/challengeId"], "Running"); err != nil {
+			log.Error(err, "Failed to send status change: %w", err)
 		}
 	}
 
@@ -97,6 +107,13 @@ func (r *ChallengeReconciler) handleDeletion(ctx context.Context, challenge *hex
 			return ctrl.Result{RequeueAfter: time.Second * 5}, err
 		}
 
+		// Send message to queue
+		sendErr := r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/userId"], challenge.Labels["apps.hexactf.io/challengeId"], "Deleted")
+		if sendErr != nil {
+			log.Error(sendErr, "Failed to send status change message")
+			return ctrl.Result{}, sendErr
+		}
+
 	}
 
 	log.Info("Successfully completed deletion process")
@@ -118,12 +135,13 @@ func (r *ChallengeReconciler) handleError(ctx context.Context, req ctrl.Request,
 	}
 
 	// crStatusMetric.WithLabelValues(challenge.Labels["apps.hexactf.io/challengeId"], challenge.Name, challenge.Labels["apps.hexactf.io/user"], challenge.Namespace).Set(3)
-	// // 상태를 Error로 전송
-	// sendErr := r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/user"], challenge.Labels["apps.hexactf.io/challengeId"], "Error")
-	// if sendErr != nil {
-	// 	log.Error(sendErr, "Failed to send status change message")
-	// 	return ctrl.Result{}, sendErr
-	// }
+
+	// Send message to queue
+	sendErr := r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/userId"], challenge.Labels["apps.hexactf.io/challengeId"], "Error")
+	if sendErr != nil {
+		log.Error(sendErr, "Failed to send status change message")
+		return ctrl.Result{}, sendErr
+	}
 
 	// 에러 발생 시 challenge 삭제
 	if deleteErr := r.Delete(ctx, challenge); deleteErr != nil {

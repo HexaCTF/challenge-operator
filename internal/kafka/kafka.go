@@ -1,4 +1,4 @@
-package controller
+package kafka
 
 import (
 	"encoding/json"
@@ -19,7 +19,7 @@ type KafkaProducer struct {
 
 // StatusMessage 는 Kafka에 보낼 메세지
 type StatusMessage struct {
-	User      string    `json:"user"`
+	UserId    string    `json:"userId"`
 	ProblemID string    `json:"problemId"`
 	NewStatus string    `json:"newStatus"`
 	Timestamp time.Time `json:"timestamp"`
@@ -59,7 +59,7 @@ func NewKafkaProducer(brokers []string) (*KafkaProducer, error) {
 }
 
 // SendStatusChange 상태 메세지를 보낼때 사용된다.
-func (k *KafkaProducer) SendStatusChange(user, problemId, newStatus string) error {
+func (k *KafkaProducer) SendStatusChange(userId, problemId, newStatus string) error {
 
 	if k == nil {
 		return fmt.Errorf("KafkaProducer instance is nil")
@@ -68,7 +68,7 @@ func (k *KafkaProducer) SendStatusChange(user, problemId, newStatus string) erro
 		return fmt.Errorf("internal Kafka producer is nil")
 	}
 	msg := StatusMessage{
-		User:      user,
+		UserId:    userId,
 		ProblemID: problemId,
 		NewStatus: newStatus,
 		Timestamp: time.Now(),
@@ -82,7 +82,7 @@ func (k *KafkaProducer) SendStatusChange(user, problemId, newStatus string) erro
 	_, _, err = k.producer.SendMessage(&sarama.ProducerMessage{
 		Topic: kafkaTopic,
 		Value: sarama.StringEncoder(payload),
-		Key:   sarama.StringEncoder(fmt.Sprintf("%s-%s", user, problemId)),
+		Key:   sarama.StringEncoder(fmt.Sprintf("%s-%s", userId, problemId)),
 	})
 
 	if err != nil {
