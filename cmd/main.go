@@ -20,7 +20,6 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
-	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -36,9 +35,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	appsv1alpha1 "github.com/hexactf/challenge-operator/api/v1alpha1"
 	appsv2alpha1 "github.com/hexactf/challenge-operator/api/v2alpha1"
-	"github.com/hexactf/challenge-operator/internal/controller"
+	controller "github.com/hexactf/challenge-operator/internal/controller/v2"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -50,7 +48,6 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
-	utilruntime.Must(appsv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(appsv2alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
@@ -151,23 +148,23 @@ func main() {
 	}
 
 	// Kafka
-	kafkaBrokers := strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
-	if len(kafkaBrokers) == 0 {
-		kafkaBrokers = []string{"localhost:9093"} // 9093 포트 사용
-	}
+	// kafkaBrokers := strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
+	// if len(kafkaBrokers) == 0 {
+	// 	kafkaBrokers = []string{"localhost:9093"} // 9093 포트 사용
+	// }
 
-	kafkaProducer, err := controller.NewKafkaProducer(kafkaBrokers)
-	if err != nil {
-		setupLog.Error(err, "unable to create kafka producer")
-		os.Exit(1)
-	}
+	// kafkaProducer, err := controller.NewKafkaProducer(kafkaBrokers)
+	// if err != nil {
+	// 	setupLog.Error(err, "unable to create kafka producer")
+	// 	os.Exit(1)
+	// }
 
-	defer kafkaProducer.Close()
+	// defer kafkaProducer.Close()
 
 	if err = (&controller.ChallengeReconciler{
-		Client:      mgr.GetClient(),
-		Scheme:      mgr.GetScheme(),
-		KafkaClient: kafkaProducer,
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+		// KafkaClient: kafkaProducer,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Challenge")
 		os.Exit(1)

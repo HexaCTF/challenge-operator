@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	hexactfproj "github.com/hexactf/challenge-operator/api/v1alpha1"
+	hexactfproj "github.com/hexactf/challenge-operator/api/v2alpha1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
