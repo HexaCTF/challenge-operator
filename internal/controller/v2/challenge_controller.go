@@ -21,6 +21,7 @@ import (
 	"time"
 
 	hexactfproj "github.com/hexactf/challenge-operator/api/v2alpha1"
+	"github.com/hexactf/challenge-operator/internal/kafka"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -46,7 +47,7 @@ type ChallengeReconciler struct {
 
 	// KafkaClient is the Kafka producer client
 	// 중요한 메세지를 Kafka를 통해 보낸다.
-	// KafkaClient *KafkaProducer
+	KafkaClient *kafka.KafkaProducer
 }
 
 // +kubebuilder:rbac:groups=apps.hexactf.io,resources=challenges,verbs=get;list;watch;create;update;patch;delete
