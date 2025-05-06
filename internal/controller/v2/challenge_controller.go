@@ -23,11 +23,12 @@ import (
 	hexactfproj "github.com/hexactf/challenge-operator/api/v2alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logr "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
 const (
@@ -37,7 +38,6 @@ const (
 )
 
 var log = logr.Log.WithName("ChallengeController")
-var CHALLENGE_NAMESPACE string = "challenge"
 
 // ChallengeReconciler reconciles a Challenge object
 type ChallengeReconciler struct {
@@ -67,70 +67,68 @@ type ChallengeReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.1/pkg/reconcile
 func (r *ChallengeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-
-	// 1. Load ChallengeDefinition
 	challenge := &hexactfproj.Challenge{}
-
 	if err := r.Get(ctx, req.NamespacedName, challenge); err != nil {
 		if errors.IsNotFound(err) {
-			err := r.loadChallengeDefinition(ctx, req, challenge)
-			if err != nil {
-				log.Error(err, "Failed to load ChallengeDefinition", "definition", challenge.Spec.Definition)
-				return ctrl.Result{}, err
-			}
-		} else {
-			log.Error(err, "Failed to get Challenge", "challenge", req.NamespacedName)
-			return ctrl.Result{}, err
+			return ctrl.Result{}, nil
 		}
+		log.Error(err, "Failed to get Challenge", "challenge", req.NamespacedName)
+		return ctrl.Result{}, err
 	}
 
+	// Handle deletion
 	if !challenge.DeletionTimestamp.IsZero() {
 		return r.handleDeletion(ctx, challenge)
 	}
 
-	// Finalizer가 없다면 추가a
+	// Add finalizer if not present
 	if !containsString(challenge.Finalizers) {
 		return r.addFinalizer(ctx, challenge)
 	}
 
-	if challenge.Status.CurrentStatus.IsPending() {
-		podList := &corev1.PodList{}
-		if err := r.List(ctx, podList, &client.ListOptions{
-			Namespace: CHALLENGE_NAMESPACE,
-			LabelSelector: labels.SelectorFromSet(map[string]string{
-				"apps.hexactf.io/challengeId": challenge.Name,
-			}),
-		}); err != nil {
-			log.Error(err, "Failed to list Pods", "podName", challenge.Name)
+	// Initialize challenge if not started
+	if challenge.Status.StartedAt == nil {
+		if err := r.initializeChallenge(ctx, challenge); err != nil {
+			return r.handleError(ctx, req, challenge, err)
 		}
-
-		if len(podList.Items) == 0 {
-			log.Info("Pod is not running", "podName", challenge.Name)
-			return ctrl.Result{}, nil
-		} else if len(podList.Items) == 1 {
-			pod := podList.Items[0]
-			if pod.Status.Phase == corev1.PodRunning {
-				challenge.Status.CurrentStatus.Running()
-				if err := r.Status().Update(ctx, challenge); err != nil {
-					log.Error(err, "Failed to update Challenge status", "challenge", challenge.Name)
-				}
-			}
-		}
-
-		// TODO: Send Kafka Queue
-
 		return ctrl.Result{RequeueAfter: requeueInterval}, nil
 	}
 
-	return ctrl.Result{}, nil
+	// Handle different states
+	switch {
+	case challenge.Status.CurrentStatus.IsPending():
+		return r.handlePendingState(ctx, challenge)
+	case challenge.Status.CurrentStatus.IsRunning():
+		return r.handleRunningState(ctx, challenge)
+	default:
+		return ctrl.Result{}, nil
+	}
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ChallengeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&hexactfproj.Challenge{}).
-		Owns(&corev1.Pod{}).
-		Owns(&corev1.Service{}).
+		Owns(&corev1.Pod{}, builder.WithPredicates(predicate.GenerationChangedPredicate{}), builder.WithPredicates(predicate.NewPredicateFuncs(func(obj client.Object) bool {
+			// Only process pods that have our owner reference
+			ownerRefs := obj.GetOwnerReferences()
+			for _, ref := range ownerRefs {
+				if ref.Kind == "Challenge" && ref.APIVersion == "apps.hexactf.io/v2alpha1" {
+					return true
+				}
+			}
+			return false
+		}))).
+		Owns(&corev1.Service{}, builder.WithPredicates(predicate.GenerationChangedPredicate{}), builder.WithPredicates(predicate.NewPredicateFuncs(func(obj client.Object) bool {
+			// Only process services that have our owner reference
+			ownerRefs := obj.GetOwnerReferences()
+			for _, ref := range ownerRefs {
+				if ref.Kind == "Challenge" && ref.APIVersion == "apps.hexactf.io/v2alpha1" {
+					return true
+				}
+			}
+			return false
+		}))).
 		Named("challenge").
 		Complete(r)
 }

@@ -18,8 +18,6 @@ package v2alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -51,6 +49,7 @@ type ChallengeStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:storageversion
 
 // Challenge is the Schema for the challenges API.
 type Challenge struct {
@@ -61,17 +60,6 @@ type Challenge struct {
 	Status ChallengeStatus `json:"status,omitempty"`
 }
 
-// DeepCopyObject implements runtime.Object.
-func (c *Challenge) DeepCopyObject() runtime.Object {
-	panic("unimplemented")
-}
-
-// GetObjectKind implements runtime.Object.
-// Subtle: this method shadows the method (TypeMeta).GetObjectKind of Challenge.TypeMeta.
-func (c *Challenge) GetObjectKind() schema.ObjectKind {
-	panic("unimplemented")
-}
-
 // +kubebuilder:object:root=true
 
 // ChallengeList contains a list of Challenge.
@@ -79,17 +67,6 @@ type ChallengeList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Challenge `json:"items"`
-}
-
-// DeepCopyObject implements runtime.Object.
-func (c *ChallengeList) DeepCopyObject() runtime.Object {
-	panic("unimplemented")
-}
-
-// GetObjectKind implements runtime.Object.
-// Subtle: this method shadows the method (TypeMeta).GetObjectKind of ChallengeList.TypeMeta.
-func (c *ChallengeList) GetObjectKind() schema.ObjectKind {
-	panic("unimplemented")
 }
 
 func init() {

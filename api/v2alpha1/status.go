@@ -6,7 +6,7 @@ type CurrentStatus struct {
 
 func NewCurrentStatus() *CurrentStatus {
 	return &CurrentStatus{
-		Status: "None",
+		Status: "Pending",
 	}
 }
 
@@ -24,6 +24,10 @@ func (c *CurrentStatus) Terminating() {
 
 func (c *CurrentStatus) Deleted() {
 	c.Status = "Deleted"
+}
+
+func (c *CurrentStatus) Error(err error) {
+	c.Status = "Error"
 }
 
 func (c *CurrentStatus) IsPending() bool {

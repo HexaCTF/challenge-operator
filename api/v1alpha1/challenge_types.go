@@ -55,7 +55,7 @@ type ChallengeStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-
+// +kubebuilder:skipversion
 // Challenge is the Schema for the challenges API.
 type Challenge struct {
 	metav1.TypeMeta   `json:",inline"`
