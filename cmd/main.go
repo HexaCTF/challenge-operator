@@ -37,6 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	appsv1alpha1 "github.com/hexactf/challenge-operator/api/v1alpha1"
+	appsv2alpha1 "github.com/hexactf/challenge-operator/api/v2alpha1"
 	"github.com/hexactf/challenge-operator/internal/controller"
 	// +kubebuilder:scaffold:imports
 )
@@ -50,6 +51,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(appsv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(appsv2alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
