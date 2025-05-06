@@ -17,3 +17,11 @@ namespace:
 
 varReference:
 - path: metadata/annotations
+
+versions:
+  - name: v1alpha1
+    served: false  # 더 이상 제공하지 않음
+    storage: false # 저장 버전이 아님
+  - name: v2alpha1
+    served: true   # 현재 제공 중
+    storage: true  # 저장 버전

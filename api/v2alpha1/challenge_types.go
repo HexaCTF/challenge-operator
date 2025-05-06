@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha1
+package v2alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -27,10 +27,10 @@ import (
 type ChallengeSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Namespace string `json:"namespace"`
 
 	// Definition: ChallengeDefinition 이름
-	Definition string `json:"definition"`
+	// ChallengeDefinition을 참조하여 실행됩니다.
+	Definition string `json:"definition,omitempty"`
 }
 
 // ChallengeStatus defines the observed state of Challenge.
@@ -44,18 +44,13 @@ type ChallengeStatus struct {
 	// CurrentStatus: Challenge 현재 상태
 	CurrentStatus CurrentStatus `json:"currentStatus,omitempty"`
 
-	// isOne는 영속성을 나타낸다.
-	// +optional
-	IsOne bool `json:"isOne,omitempty"`
-
-	// Endpoint: Challenge의 Endpoint
-	// 외부에 노출될 포트 번호가 저장됩니다.
 	Endpoint int `json:"endpoint,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:skipversion
+// +kubebuilder:storageversion
+
 // Challenge is the Schema for the challenges API.
 type Challenge struct {
 	metav1.TypeMeta   `json:",inline"`
