@@ -24,9 +24,11 @@ func (r *ChallengeReconciler) loadChallengeDefinition(ctx context.Context, req c
 		challenge.Labels["apps.hexactf.io/userId"],
 	)
 
+	// Create a patch for just the labels
+	patch := client.MergeFrom(challenge.DeepCopy())
 	labelInjector.InjectChallengeLabels(challenge)
-	if err := r.Update(ctx, challenge); err != nil {
-		log.Error(err, "Failed to update Challenge", "challenge", challenge.Name)
+	if err := r.Patch(ctx, challenge, patch); err != nil {
+		log.Error(err, "Failed to patch Challenge labels", "challenge", challenge.Name)
 		return err
 	}
 

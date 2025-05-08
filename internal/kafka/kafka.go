@@ -22,6 +22,7 @@ type StatusMessage struct {
 	UserId    string    `json:"userId"`
 	ProblemID string    `json:"problemId"`
 	NewStatus string    `json:"newStatus"`
+	Endpoint  string    `json:"endpoint"`
 	Timestamp time.Time `json:"timestamp"`
 }
 
@@ -60,7 +61,11 @@ func NewKafkaProducer(brokers []string) (*KafkaProducer, error) {
 
 // SendStatusChange 상태 메세지를 보낼때 사용된다.
 func (k *KafkaProducer) SendStatusChange(userId, problemId, newStatus string) error {
+	return k.SendStatusChangeWithEndpoint(userId, problemId, newStatus, "")
+}
 
+// SendStatusChangeWithEndpoint 상태 메세지를 보낼때 사용된다.
+func (k *KafkaProducer) SendStatusChangeWithEndpoint(userId, problemId, newStatus, endpoint string) error {
 	if k == nil {
 		return fmt.Errorf("KafkaProducer instance is nil")
 	}
@@ -71,6 +76,7 @@ func (k *KafkaProducer) SendStatusChange(userId, problemId, newStatus string) er
 		UserId:    userId,
 		ProblemID: problemId,
 		NewStatus: newStatus,
+		Endpoint:  endpoint,
 		Timestamp: time.Now(),
 	}
 

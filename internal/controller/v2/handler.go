@@ -54,8 +54,14 @@ func (r *ChallengeReconciler) handlePendingState(ctx context.Context, challenge 
 			log.Error(err, "Failed to update Challenge status", "challenge", challenge.Name)
 		}
 
+		// Convert endpoint to string
+		endpoint := ""
+		if challenge.Status.Endpoint != 0 {
+			endpoint = fmt.Sprintf("%d", challenge.Status.Endpoint)
+		}
+
 		// Send Message
-		if err := r.KafkaClient.SendStatusChange(challenge.Labels["apps.hexactf.io/userId"], challenge.Labels["apps.hexactf.io/challengeId"], "Running"); err != nil {
+		if err := r.KafkaClient.SendStatusChangeWithEndpoint(challenge.Labels["apps.hexactf.io/userId"], challenge.Labels["apps.hexactf.io/challengeId"], "Running", endpoint); err != nil {
 			log.Error(err, "Failed to send status change: %w", err)
 		}
 	}
