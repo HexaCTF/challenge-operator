@@ -58,15 +58,25 @@ func (li *LabelInjector) InjectPod(pod *v2alpha1.PodConfig) *corev1.Pod {
 			Args:    container.Args,
 			Ports:   make([]corev1.ContainerPort, len(container.Ports)),
 			Resources: corev1.ResourceRequirements{
-				Limits: corev1.ResourceList{
-					corev1.ResourceCPU:    resource.MustParse(container.Resources.Limits.CPU),
-					corev1.ResourceMemory: resource.MustParse(container.Resources.Limits.Memory),
-				},
-				Requests: corev1.ResourceList{
-					corev1.ResourceCPU:    resource.MustParse(container.Resources.Requests.CPU),
-					corev1.ResourceMemory: resource.MustParse(container.Resources.Requests.Memory),
-				},
+				Limits:   make(corev1.ResourceList),
+				Requests: make(corev1.ResourceList),
 			},
+		}
+
+		// Set resource limits if they are not empty
+		if container.Resources.Limits.CPU != "" {
+			newPod.Spec.Containers[i].Resources.Limits[corev1.ResourceCPU] = resource.MustParse(container.Resources.Limits.CPU)
+		}
+		if container.Resources.Limits.Memory != "" {
+			newPod.Spec.Containers[i].Resources.Limits[corev1.ResourceMemory] = resource.MustParse(container.Resources.Limits.Memory)
+		}
+
+		// Set resource requests if they are not empty
+		if container.Resources.Requests.CPU != "" {
+			newPod.Spec.Containers[i].Resources.Requests[corev1.ResourceCPU] = resource.MustParse(container.Resources.Requests.CPU)
+		}
+		if container.Resources.Requests.Memory != "" {
+			newPod.Spec.Containers[i].Resources.Requests[corev1.ResourceMemory] = resource.MustParse(container.Resources.Requests.Memory)
 		}
 
 		// Convert ports
