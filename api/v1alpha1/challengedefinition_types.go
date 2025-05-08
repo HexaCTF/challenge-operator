@@ -77,6 +77,7 @@ type ChallengeDefinitionStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:skipversion
 
 // ChallengeDefinition is the Schema for the challengedefinitions API.
 type ChallengeDefinition struct {

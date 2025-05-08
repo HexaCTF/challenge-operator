@@ -1,0 +1,48 @@
+apiVersion: apps.hexactf.io/v2alpha1
+kind: ChallengeDefinition
+metadata:
+  name: ubuntu-basic
+  namespace: challenge
+  labels:
+    apps.hexactf.io/challengeId: "1"
+spec:
+  resource:
+    name: ubuntu-basic
+    pod:
+      containers:
+        - name: ubuntu
+          image: ubuntu:22.04
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              apt-get update && \
+              DEBIAN_FRONTEND=noninteractive apt-get install -y \
+                openssh-server \
+                curl \
+                wget \
+                vim \
+                net-tools \
+                iputils-ping && \
+              mkdir -p /run/sshd && \
+              echo 'root:toor' | chpasswd && \
+              sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+              /usr/sbin/sshd && \
+              sleep infinity
+          ports:
+            - containerPort: 22
+              protocol: TCP
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+    service:
+      spec:
+        ports:
+          - name: ssh
+            protocol: TCP
+            port: 22
+            targetPort: 22
+        type: NodePort

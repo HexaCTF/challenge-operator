@@ -39,6 +39,7 @@ services:
   challenge-operator:
     image: hexactf/challenge-operator:latest
     network_mode: "host"
+    command: ["--metrics-bind-address=:8079"]
     volumes:
       - type: bind
         source: ${HOME}/.kube/config
@@ -46,7 +47,6 @@ services:
         read_only: true
     environment:
       DEVELOPMENT: "true"
-      METRICS_ADDR: ":8081"
       KAFKA_BROKERS: "localhost:9093"
       LOG_LEVEL: "debug"
       KUBECONFIG: "/home/nonroot/.kube/config"

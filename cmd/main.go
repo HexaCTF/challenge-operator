@@ -36,8 +36,9 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	appsv1alpha1 "github.com/hexactf/challenge-operator/api/v1alpha1"
-	"github.com/hexactf/challenge-operator/internal/controller"
+	appsv2alpha1 "github.com/hexactf/challenge-operator/api/v2alpha1"
+	controller "github.com/hexactf/challenge-operator/internal/controller/v2"
+	"github.com/hexactf/challenge-operator/internal/kafka"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -49,7 +50,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
-	utilruntime.Must(appsv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(appsv2alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -60,8 +61,13 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metrics endpoint binds to. "+
-		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
+
+	// Get metrics address from environment variable
+	metricsAddr = os.Getenv("METRICS_ADDR")
+	if metricsAddr == "" {
+		metricsAddr = ":8080" // default value
+	}
+
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
@@ -154,7 +160,7 @@ func main() {
 		kafkaBrokers = []string{"localhost:9093"} // 9093 포트 사용
 	}
 
-	kafkaProducer, err := controller.NewKafkaProducer(kafkaBrokers)
+	kafkaProducer, err := kafka.NewKafkaProducer(kafkaBrokers)
 	if err != nil {
 		setupLog.Error(err, "unable to create kafka producer")
 		os.Exit(1)
