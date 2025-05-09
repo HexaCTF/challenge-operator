@@ -33,7 +33,7 @@ import (
 )
 
 const (
-	challengeDuration = 5 * time.Minute
+	challengeDuration = 6 * time.Hour
 	requeueInterval   = 30 * time.Second
 	warningThreshold  = 2 * time.Minute // Time to start warning about impending timeout
 )
