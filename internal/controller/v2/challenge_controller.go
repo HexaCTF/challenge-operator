@@ -21,7 +21,6 @@ import (
 	"time"
 
 	hexactfproj "github.com/hexactf/challenge-operator/api/v2alpha1"
-	"github.com/hexactf/challenge-operator/internal/kafka"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -33,9 +32,10 @@ import (
 )
 
 const (
-	challengeDuration = 6 * time.Hour
-	requeueInterval   = 30 * time.Second
+	challengeDuration = 24 * time.Hour
+	requeueInterval   = 1 * time.Minute
 	warningThreshold  = 2 * time.Minute // Time to start warning about impending timeout
+	noTimeCondition   = true
 )
 
 var log = logr.Log.WithName("ChallengeController")
@@ -47,7 +47,7 @@ type ChallengeReconciler struct {
 
 	// KafkaClient is the Kafka producer client
 	// 중요한 메세지를 Kafka를 통해 보낸다.
-	KafkaClient *kafka.KafkaProducer
+	// KafkaClient *kafka.KafkaProducer
 }
 
 // +kubebuilder:rbac:groups=apps.hexactf.io,resources=challenges,verbs=get;list;watch;create;update;patch;delete
