@@ -152,24 +152,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Kafka
-	// kafkaBrokers := strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
-	// if len(kafkaBrokers) == 0 {
-	// 	kafkaBrokers = []string{"localhost:9093"} // 9093 포트 사용
-	// }
-
-	// kafkaProducer, err := kafka.NewKafkaProducer(kafkaBrokers)
-	// if err != nil {
-	// 	setupLog.Error(err, "unable to create kafka producer")
-	// 	os.Exit(1)
-	// }
-
-	// defer kafkaProducer.Close()
-
 	if err = (&controller.ChallengeReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-		// KafkaClient: kafkaProducer,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Challenge")
 		os.Exit(1)
