@@ -1,20 +1,20 @@
 ---
 name: Feature request
 about: Suggest an idea for this project
-title: "FEAT:"
+title: "Feat:"
 labels: feature
 assignees: ''
 
 ---
 
 **Summary**
-What change you think needs making.
+<!--What change you think needs making.-->
 
 **Motivation**
-Please give examples of your use case, e.g. when would you use this.
+<!--Please give examples of your use case, e.g. when would you use this.-->
 
 **Proposal**
-How do you think this should be implemented?
+<!--How do you think this should be implemented?-->
 
 **Additional context**
-Add any other context or screenshots about the feature request here.
+<!--Add any other context or screenshots about the feature request here.-->
