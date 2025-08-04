@@ -44,10 +44,6 @@ var log = logr.Log.WithName("ChallengeController")
 type ChallengeReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
-
-	// KafkaClient is the Kafka producer client
-	// 중요한 메세지를 Kafka를 통해 보낸다.
-	// KafkaClient *kafka.KafkaProducer
 }
 
 // +kubebuilder:rbac:groups=apps.hexactf.io,resources=challenges,verbs=get;list;watch;create;update;patch;delete
