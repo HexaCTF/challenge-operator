@@ -4,7 +4,7 @@ import (
 	"context"
 
 	hexactfproj "github.com/hexactf/challenge-operator/api/v2alpha1"
-	"github.com/hexactf/challenge-operator/internal/utils"
+	"github.com/hexactf/challenge-operator/internal/controller/v2/utils"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
