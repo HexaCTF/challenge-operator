@@ -73,7 +73,10 @@ func NewChallengeBuilder() *ChallengeBuilder {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-challenge",
 				Namespace: "default",
-				Labels:    make(map[string]string),
+				Labels: map[string]string{
+					"apps.hexactf.io/challengeId": "test-challenge-id",
+					"apps.hexactf.io/userId":      "test-user-id",
+				},
 			},
 			Spec: hexactfproj.ChallengeSpec{
 				Definition: "test-definition",
@@ -186,6 +189,7 @@ func CreateFakeClient(objects ...client.Object) client.Client {
 	return fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objects...).
+		WithStatusSubresource(&hexactfproj.Challenge{}).
 		Build()
 }
 

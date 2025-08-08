@@ -80,6 +80,18 @@ test-e2e: manifests generate fmt vet ## Run the e2e tests. Expected an isolated 
 	}
 	go test ./test/e2e/ -v -ginkgo.v
 
+.PHONY: test-integration
+test-integration: manifests generate fmt vet ## Run the integration tests. Requires a running Kubernetes cluster.
+	@command -v kubectl >/dev/null 2>&1 || { \
+		echo "kubectl is not installed. Please install kubectl manually."; \
+		exit 1; \
+	}
+	@kubectl cluster-info >/dev/null 2>&1 || { \
+		echo "No Kubernetes cluster is accessible. Please ensure kubectl is configured with a valid cluster."; \
+		exit 1; \
+	}
+	go test ./test/integration/ -v -ginkgo.v
+
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
 	$(GOLANGCI_LINT) run
