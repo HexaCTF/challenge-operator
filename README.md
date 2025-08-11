@@ -4,16 +4,37 @@ For this project, we utilized containers extensively to create independent hacki
 Kubernetes offers powerful scalability, allowing not only the use of standard resources but also the creation and lifecycle management of custom resources through controllers. By capitalizing on these open-source features, we applied Kubernetes to streamline and automate our hacking competition operations platform.
 
 ## Features
-- **Declarative Environment Creation**: Easily define unique, per-user CTF challenge environments using a YAML-based custom resource, just like standard Kubernetes manifests.
-- **Kubernetes Native Experience**: Challenge specifications adopt Kubernetes Pod grammar, so anyone familiar with Kubernetes can create or modify challenge environments intuitively and rapidly.
-- **Full Lifecycle Automation**: The operator handles the entire lifecycle—provisioning, management, and cleanup—of challenge resources, reducing human error and operational load.
+- **Declarative Environment Creation**:Easily define unique, per-user CTF challenge environments using a YAML-based custom resource, just like standard Kubernetes manifests.
+- **Kubernetes Native Experience**:Challenge specifications adopt Kubernetes Pod grammar, so anyone familiar with Kubernetes can create or modify challenge environments intuitively and rapidly.
+- **Full Lifecycle Automation**:The operator handles the entire lifecycle—provisioning, management, and cleanup—of challenge resources, reducing human error and operational load.
 
 ## Concepts
+
+### Custom Resource
 > [!note]
-> In `v1alpha2`, the structure of `ChallengeDefinition` was updated for simplicity. For more details, please read this documentation.
+> In `v2alpha1`, the structure of `ChallengeDefinition` was updated for simplicity. For more details, please read this [documentation](./changelog/v2alpha1.md).
 
 - **ChallengeDefinition** is a custom Kubernetes resource used to define CTF challenges, including their environment, configuration.
 - **Challenge** is a custom Kubernetes resource that provisions and manages a CTF challenge environment for a user. The Challenge Operator manages Challenge custom resources (CRs) and oversees their entire lifecycle.
+
+![v2alpha1](./assets/v2aplha1.png)
+
+### Controller 
+
+#### Status 
+| Status       | Description |
+|--------------|-------------|
+| **Pending**      | The `Challenge` object has been created from a valid `ChallengeDefinition` and is awaiting resource readiness. |
+| **Running**      | All Kubernetes resources for the `Challenge` are active and running. |
+| **Terminating**  | The `Challenge` is being removed — deletion requested and all associated Kubernetes resources are being cleaned up. |
+| **Error**        | An error occurred during the Pending or Running state; the `Challenge` enters automatic cleanup (Terminating). |
+
+
+#### Flow Chart
+The diagram below visualizes the status transitions of a `Challenge`, helping you understand the complete lifecycle and automatic error handling.
+
+![flowchart](./assets/v2alpha1-flowchart.png)
+
 
 ## Quick start 
 ### Add CRD(ChallengeDefinition, Challenge)
