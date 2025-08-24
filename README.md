@@ -12,7 +12,7 @@ Kubernetes offers powerful scalability, allowing not only the use of standard re
 
 ### Custom Resource
 > [!note]
-> In `v2alpha1`, the structure of `ChallengeDefinition` was updated for simplicity. For more details, please read this [documentation](./changelog/v2alpha1.md).
+> In `v2alpha1`, the structure of `ChallengeDefinition` was updated for simplicity.
 
 - **ChallengeDefinition** is a custom Kubernetes resource used to define CTF challenges, including their environment, configuration.
 - **Challenge** is a custom Kubernetes resource that provisions and manages a CTF challenge environment for a user. The Challenge Operator manages Challenge custom resources (CRs) and oversees their entire lifecycle.
